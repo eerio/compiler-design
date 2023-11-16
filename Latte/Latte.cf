@@ -1,134 +1,92 @@
--- programs ------------------------------------------------
+entrypoints ProgramC ;
+Program.   ProgramC ::= [TopDef] ;
 
-entrypoints Program ;
+DeclFun.   TopDef ::= FunDef ;
+DeclCls.   TopDef ::= "class" Ident "{" [ClsDef] "}" ;
+DeclClsE.  TopDef ::= "class" Ident "extends" Ident "{" [ClsDef] "}" ;
+separator nonempty TopDef "" ;
 
-Prog.      Program ::= [Stmt] ;
+DeclInCls. ClsDef ::= Type Ident ";" ;
+FunInCls.  ClsDef ::= FunDef ;
+separator nonempty ClsDef "" ;
+
+FunDef.    FunDef ::= Type Ident "(" [ArgC] ")" BlockC ;
 
 Arg.  	   ArgC ::= Type Ident ;
-
-ArgRef.    ArgC ::= Type"&" Ident ;
-
 separator  ArgC "," ;
-
--- statements ----------------------------------------------
 
 Block.     BlockC ::= "{" [Stmt] "}" ;
 
+Empty.     Stmt ::= ";" ;
+BStmt.     Stmt ::= BlockC ;
+Decl.      Stmt ::= Type Item ";" ;
+Ass.       Stmt ::= LValue "=" Expr  ";" ;
+Incr.      Stmt ::= LValue "++"  ";" ;
+Decr.      Stmt ::= LValue "--"  ";" ;
+Ret.       Stmt ::= "return" Expr ";" ;
+VRet.      Stmt ::= "return" ";" ;
+CondS.     Stmt ::= "if" "(" Expr ")" Stmt ;
+ConsB.     Stmt ::= "if" "(" Expr ")" BlockC ;
+CondSElseS.Stmt ::= "if" "(" Expr ")" Stmt "else" Stmt;
+CondSElseB.Stmt ::= "if" "(" Expr ")" Stmt "else" BlockC;
+CondBElseS.Stmt ::= "if" "(" Expr ")" BlockC "else" Stmt;
+CondBElseB.Stmt ::= "if" "(" Expr ")" BlockC "else" BlockC;
+
+WhileS.    Stmt ::= "while" "(" Expr ")" Stmt;
+WhileB.    Stmt ::= "while" "(" Expr ")" BlockC ;
+ForS.      Stmt ::= "for" "(" Type Ident ":" Ident ")" Stmt ;
+ForB.      Stmt ::= "for" "(" Type Ident ":" Ident ")" BlockC ;
+SExp.      Stmt ::= Expr ";" ;
 separator  Stmt "" ;
 
-Empty.     Stmt ::= ";" ;
-
-BStmt.     Stmt ::= BlockC ;
-
-Decl.      Stmt ::= Type Item ";" ;
-
-DeclFun.   Stmt ::= Type Ident "(" [ArgC] ")" BlockC ;
-
 NoInit.    Item ::= LValue ; 
-
 Init.      Item ::= LValue "=" Expr ;
-
 separator nonempty Item "," ;
 
-Ass.       Stmt ::= LValue "=" Expr  ";" ;
-
-Incr.      Stmt ::= LValue "++"  ";" ;
-
-Decr.      Stmt ::= LValue "--"  ";" ;
-
-Ret.       Stmt ::= "return" Expr ";" ;
-
-VRet.      Stmt ::= "return" ";" ;
-
-Cond.      Stmt ::= "if" "(" Expr ")" BlockC ;
-
-CondElse.  Stmt ::= "if" "(" Expr ")" BlockC "else" BlockC ;
-
-While.     Stmt ::= "while" "(" Expr ")" BlockC ;
-
-SExp.      Stmt ::= Expr ";" ;
-
--- LValues -------------------------------------------------
-
 LIdent.    LValue ::= Ident ;
+LAt.       LValue ::= Expr6 "[" Expr "]" ;
+LAttr.     LValue ::= Expr6 "." Ident ;
 
--- Types ---------------------------------------------------
-
+Cls.       Type ::= Ident ;
 Int.       Type ::= "int" ;
-
 Str.       Type ::= "string" ;
-
-Bool.      Type ::= "bool" ;
-
+Bool.      Type ::= "boolean" ;
 Void.      Type ::= "void" ;
-
-Fun.       Type ::= Type "(" [ArgC] ")" ;
-
+Arr.       Type ::= Type "[]" ;
+internal Fun. Type ::= Type "(" [Type] ")" ;
 separator  Type "," ;
 
--- Expressions ---------------------------------------------
-  
-ELitInt.   Expr7 ::= Integer ;
-
-ELitTrue.  Expr7 ::= "true" ;
-
-ELitFalse. Expr7 ::= "false" ;
-
-EString.   Expr7 ::= String ;
-
+ 
+ELitInt.   Expr6 ::= Integer ;
+ELitTrue.  Expr6 ::= "true" ;
+ELitFalse. Expr6 ::= "false" ;
 ELVal.     Expr6 ::= LValue ;
-
 EApp.      Expr6 ::= Ident "(" [Expr] ")" ;
-
-Neg.       Expr5 ::= "-" Expr6 ;
-
-Not.       Expr5 ::= "!" Expr6 ;
-
+ENew.      Expr6 ::= "new" Ident ;
+ENewArr.   Expr6 ::= "new" Type "[" Expr "]" ;
+EMethod.   Expr6 ::= Expr6 "." Ident "(" [ArgC] ")" ;
+EString.   Expr6 ::= String ;
+Neg.       Expr5 ::= "-" Expr5 ;
+Not.       Expr5 ::= "!" Expr5 ;
 EMul.      Expr4 ::= Expr4 MulOp Expr5 ;
-
 EAdd.      Expr3 ::= Expr3 AddOp Expr4 ;
-
 ERel.      Expr2 ::= Expr2 RelOp Expr3 ;
-
 EAnd.      Expr1 ::= Expr2 "&&" Expr1 ;
-
 EOr.       Expr ::= Expr1 "||" Expr ;
-
-ELambda.   Expr ::= "lambda" Ident ":" Expr ; 
-
-coercions  Expr 7 ;
-
+coercions  Expr 6 ;
 separator  Expr "," ;
 
--- operators -----------------------------------------------
-
 Plus.      AddOp ::= "+" ;
-
 Minus.     AddOp ::= "-" ;
-
 Times.     MulOp ::= "*" ;
-
 Div.       MulOp ::= "/" ;
-
 Mod.       MulOp ::= "%" ;
-
 LTH.       RelOp ::= "<" ;
-
 LE.        RelOp ::= "<=" ;
-
 GTH.       RelOp ::= ">" ;
-
 GE.        RelOp ::= ">=" ;
-
 EQU.       RelOp ::= "==" ;
-
 NE.        RelOp ::= "!=" ;
 
--- comments ------------------------------------------------
-
-comment    "#" ;
-
 comment    "//" ;
-
 comment    "/*" "*/" ;
-

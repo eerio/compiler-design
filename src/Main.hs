@@ -20,7 +20,7 @@ import Control.Monad      ( when )
 
 import Latte.Abs   ()
 import Latte.Lex   ( Token, mkPosToken )
-import Latte.Par   ( pProgram, myLexer )
+import Latte.Par   ( pProgramC, myLexer )
 import Latte.Print ( Print, printTree )
 import Latte.Skel  ()
 
@@ -70,7 +70,7 @@ main = do
   args <- getArgs
   case args of
     ["--help"] -> usage
-    []         -> getContents >>= run 2 pProgram
-    "-s":fs    -> mapM_ (runFile 0 pProgram) fs
-    fs         -> mapM_ (runFile 2 pProgram) fs
+    []         -> getContents >>= run 2 pProgramC
+    "-s":fs    -> mapM_ (runFile 0 pProgramC) fs
+    fs         -> mapM_ (runFile 2 pProgramC) fs
 
