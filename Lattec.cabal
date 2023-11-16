@@ -1,0 +1,45 @@
+cabal-version:      2.4
+name:               Lattec
+version:            1.0
+synopsis:           Latte compiler
+-- A longer description of the Latte language compiler for MRJP at MIMUW
+description:        Latte compiler for MRJP at MIMUW
+license-file:       LICENSE.txt
+license:            GPL-3.0-only
+maintainer:         Paweł Balawender
+category:           Language
+
+-- Extra files to be distributed with the package, such as examples or a README.
+extra-source-files:
+    README.md
+
+executable latc
+    -- .hs or .lhs file containing the Main module.
+    main-is: src/Main.hs
+
+    -- Modules included in this executable, other than Main.
+    other-modules:
+        Latte.Abs
+        Latte.ErrM
+        Latte.Lex
+        Latte.Par
+        Latte.Print
+        Latte.Skel
+
+    -- LANGUAGE extensions used by modules in this package.
+    -- other-extensions:
+
+    -- Other library packages from which modules are imported.
+    build-depends:
+        base ^>=4.13.0.0
+        , array
+        , mtl
+        , containers
+        
+
+    -- Directories containing source files.
+    hs-source-dirs:
+        .
+
+    -- Base language which the package is written in.
+    default-language: Haskell2010

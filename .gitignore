@@ -1,3 +1,9 @@
+latc
+.vscode
+Latte/*
+!Latte/Latte.cf
+
+
 dist
 dist-*
 cabal-dev
