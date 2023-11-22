@@ -1,16 +1,16 @@
 entrypoints ProgramC ;
-Program.   ProgramC ::= [TopDef] ;
+Program.        ProgramC ::= [TopDef] ;
 
-DeclFun.   TopDef ::= FunDef ;
-DeclCls.   TopDef ::= "class" Ident "{" [ClsDef] "}" ;
-DeclClsE.  TopDef ::= "class" Ident "extends" Ident "{" [ClsDef] "}" ;
+FunDecl.        TopDef ::= FunDefC ;
+ClassDecl.      TopDef ::= "class" Ident "{" [ClassItemDef] "}" ;
+ClassDeclExt.   TopDef ::= "class" Ident "extends" Ident "{" [ClassItemDef] "}" ;
 separator nonempty TopDef "" ;
 
-DeclInCls. ClsDef ::= Type Ident ";" ;
-FunInCls.  ClsDef ::= FunDef ;
-separator nonempty ClsDef "" ;
+ClassAttrDecl.  ClassItemDef ::= Type Ident ";" ;
+ClassMthdDecl.  ClassItemDef ::= FunDefC ;
+separator nonempty ClassItemDef "" ;
 
-FunDef.    FunDef ::= Type Ident "(" [ArgC] ")" BlockC ;
+FunDef.    FunDefC ::= Type Ident "(" [ArgC] ")" BlockC ;
 
 Arg.  	   ArgC ::= Type Ident ;
 separator  ArgC "," ;
@@ -25,17 +25,10 @@ Incr.      Stmt ::= LValue "++"  ";" ;
 Decr.      Stmt ::= LValue "--"  ";" ;
 Ret.       Stmt ::= "return" Expr ";" ;
 VRet.      Stmt ::= "return" ";" ;
-CondS.     Stmt ::= "if" "(" Expr ")" Stmt ;
-ConsB.     Stmt ::= "if" "(" Expr ")" BlockC ;
-CondSElseS.Stmt ::= "if" "(" Expr ")" Stmt "else" Stmt;
-CondSElseB.Stmt ::= "if" "(" Expr ")" Stmt "else" BlockC;
-CondBElseS.Stmt ::= "if" "(" Expr ")" BlockC "else" Stmt;
-CondBElseB.Stmt ::= "if" "(" Expr ")" BlockC "else" BlockC;
-
-WhileS.    Stmt ::= "while" "(" Expr ")" Stmt;
-WhileB.    Stmt ::= "while" "(" Expr ")" BlockC ;
-ForS.      Stmt ::= "for" "(" Type Ident ":" Ident ")" Stmt ;
-ForB.      Stmt ::= "for" "(" Type Ident ":" Ident ")" BlockC ;
+Cond.      Stmt ::= "if" "(" Expr ")" Stmt ;
+CondElse.  Stmt ::= "if" "(" Expr ")" Stmt "else" Stmt;
+While.     Stmt ::= "while" "(" Expr ")" Stmt;
+For.       Stmt ::= "for" "(" Type Ident ":" Ident ")" Stmt ;
 SExp.      Stmt ::= Expr ";" ;
 separator  Stmt "" ;
 
@@ -57,23 +50,24 @@ internal Fun. Type ::= Type "(" [Type] ")" ;
 separator  Type "," ;
 
  
-ELitInt.   Expr6 ::= Integer ;
-ELitTrue.  Expr6 ::= "true" ;
-ELitFalse. Expr6 ::= "false" ;
-ELVal.     Expr6 ::= LValue ;
-EApp.      Expr6 ::= Ident "(" [Expr] ")" ;
+ELitInt.   Expr7 ::= Integer ;
+EString.   Expr7 ::= String ;
+ELitTrue.  Expr7 ::= "true" ;
+ELitFalse. Expr7 ::= "false" ;
+ELVal.     Expr7 ::= LValue ;
+EApp.      Expr7 ::= Ident "(" [Expr] ")" ;
+EMethod.   Expr7 ::= Expr7 "." Ident "(" [Expr] ")" ;
 ENew.      Expr6 ::= "new" Ident ;
 ENewArr.   Expr6 ::= "new" Type "[" Expr "]" ;
-EMethod.   Expr6 ::= Expr6 "." Ident "(" [ArgC] ")" ;
-EString.   Expr6 ::= String ;
-Neg.       Expr5 ::= "-" Expr5 ;
-Not.       Expr5 ::= "!" Expr5 ;
+ECast.     Expr5 ::= "(" Ident ")" Expr6 ;
+ENeg.      Expr5 ::= "-" Expr5 ;
+ENot.      Expr5 ::= "!" Expr5 ;
 EMul.      Expr4 ::= Expr4 MulOp Expr5 ;
 EAdd.      Expr3 ::= Expr3 AddOp Expr4 ;
 ERel.      Expr2 ::= Expr2 RelOp Expr3 ;
 EAnd.      Expr1 ::= Expr2 "&&" Expr1 ;
 EOr.       Expr ::= Expr1 "||" Expr ;
-coercions  Expr 6 ;
+coercions  Expr 7 ;
 separator  Expr "," ;
 
 Plus.      AddOp ::= "+" ;
