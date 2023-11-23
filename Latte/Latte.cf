@@ -19,10 +19,10 @@ Block.     BlockC ::= "{" [Stmt] "}" ;
 
 Empty.     Stmt ::= ";" ;
 BStmt.     Stmt ::= BlockC ;
-Decl.      Stmt ::= Type Item ";" ;
-Ass.       Stmt ::= LValue "=" Expr  ";" ;
-Incr.      Stmt ::= LValue "++"  ";" ;
-Decr.      Stmt ::= LValue "--"  ";" ;
+Decl.      Stmt ::= Type Ident "=" Expr ";" ;
+Ass.       Stmt ::= Expr "=" Expr  ";" ;
+Incr.      Stmt ::= Expr "++"  ";" ;
+Decr.      Stmt ::= Expr "--"  ";" ;
 Ret.       Stmt ::= "return" Expr ";" ;
 VRet.      Stmt ::= "return" ";" ;
 Cond.      Stmt ::= "if" "(" Expr ")" Stmt ;
@@ -31,14 +31,6 @@ While.     Stmt ::= "while" "(" Expr ")" Stmt;
 For.       Stmt ::= "for" "(" Type Ident ":" Ident ")" Stmt ;
 SExp.      Stmt ::= Expr ";" ;
 separator  Stmt "" ;
-
-NoInit.    Item ::= LValue ; 
-Init.      Item ::= LValue "=" Expr ;
-separator nonempty Item "," ;
-
-LIdent.    LValue ::= Ident ;
-LAt.       LValue ::= Expr6 "[" Expr "]" ;
-LAttr.     LValue ::= Expr6 "." Ident ;
 
 Cls.       Type ::= Ident ;
 Int.       Type ::= "int" ;
@@ -49,13 +41,15 @@ Arr.       Type ::= Type "[]" ;
 internal Fun. Type ::= Type "(" [Type] ")" ;
 separator  Type "," ;
 
- 
+
 ELitInt.   Expr7 ::= Integer ;
 EString.   Expr7 ::= String ;
 ELitTrue.  Expr7 ::= "true" ;
 ELitFalse. Expr7 ::= "false" ;
-ELVal.     Expr7 ::= LValue ;
+EVar.      Expr7 ::= Ident ;
 EApp.      Expr7 ::= Ident "(" [Expr] ")" ;
+EAt.       Expr7 ::= Expr "[" Expr "]" ;
+EAttr.     Expr7 ::= Expr "." Ident ;
 EMethod.   Expr7 ::= Expr7 "." Ident "(" [Expr] ")" ;
 ENew.      Expr6 ::= "new" Ident ;
 ENewArr.   Expr6 ::= "new" Type "[" Expr "]" ;
