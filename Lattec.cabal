@@ -25,6 +25,7 @@ executable latc
         Latte.Par
         Latte.Print
         Latte.Skel
+        TypeChecker
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
@@ -39,6 +40,7 @@ executable latc
 
     -- Directories containing source files.
     hs-source-dirs:
+        src
         .
 
     -- Base language which the package is written in.

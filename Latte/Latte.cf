@@ -15,11 +15,15 @@ FunDef.    FunDefC ::= Type Ident "(" [ArgC] ")" BlockC ;
 Arg.  	   ArgC ::= Type Ident ;
 separator  ArgC "," ;
 
+Init.      DeclItem ::= Ident "=" Expr ;
+NoInit.    DeclItem ::= Ident ;
+separator  DeclItem "," ;
+
 Block.     BlockC ::= "{" [Stmt] "}" ;
 
 Empty.     Stmt ::= ";" ;
 BStmt.     Stmt ::= BlockC ;
-Decl.      Stmt ::= Type Ident "=" Expr ";" ;
+Decl.      Stmt ::= Type [DeclItem] ";" ;
 Ass.       Stmt ::= Expr "=" Expr  ";" ;
 Incr.      Stmt ::= Expr "++"  ";" ;
 Decr.      Stmt ::= Expr "--"  ";" ;
@@ -38,7 +42,7 @@ Str.       Type ::= "string" ;
 Bool.      Type ::= "boolean" ;
 Void.      Type ::= "void" ;
 Arr.       Type ::= Type "[]" ;
-internal Fun. Type ::= Type "(" [Type] ")" ;
+internal Fun. Type ::= Type "(" [ArgC] ")" ;
 separator  Type "," ;
 
 
@@ -48,8 +52,8 @@ ELitTrue.  Expr7 ::= "true" ;
 ELitFalse. Expr7 ::= "false" ;
 EVar.      Expr7 ::= Ident ;
 EApp.      Expr7 ::= Ident "(" [Expr] ")" ;
-EAt.       Expr7 ::= Expr "[" Expr "]" ;
-EAttr.     Expr7 ::= Expr "." Ident ;
+EAt.       Expr7 ::= Expr7 "[" Expr "]" ;
+EAttr.     Expr7 ::= Expr7 "." Ident ;
 EMethod.   Expr7 ::= Expr7 "." Ident "(" [Expr] ")" ;
 ENew.      Expr6 ::= "new" Ident ;
 ENewArr.   Expr6 ::= "new" Type "[" Expr "]" ;

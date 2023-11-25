@@ -2,6 +2,7 @@ latc
 .vscode
 Latte/*
 !Latte/Latte.cf
+lattests
 
 
 dist

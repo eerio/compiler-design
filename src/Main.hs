@@ -18,11 +18,14 @@ import System.Environment ( getArgs )
 import System.Exit        ( exitFailure )
 import Control.Monad      ( when )
 
-import Latte.Abs   ()
+import Latte.Abs   ( ProgramC )
 import Latte.Lex   ( Token, mkPosToken )
 import Latte.Par   ( pProgramC, myLexer )
 import Latte.Print ( Print, printTree )
 import Latte.Skel  ()
+
+import TypeChecker ( typeCheck)
+import System.IO (hPutStrLn, stderr)
 
 type Err        = Either String
 type ParseFun a = [Token] -> Err a
@@ -31,24 +34,24 @@ type Verbosity  = Int
 putStrV :: Verbosity -> String -> IO ()
 putStrV v s = when (v > 1) $ putStrLn s
 
-runFile :: (Print a, Show a) => Verbosity -> ParseFun a -> FilePath -> IO ()
+runFile :: Verbosity -> ParseFun ProgramC -> FilePath -> IO ()
 runFile v p f = putStrLn f >> readFile f >>= run v p
 
-run :: (Print a, Show a) => Verbosity -> ParseFun a -> String -> IO ()
+run :: Verbosity -> ParseFun ProgramC -> String -> IO ()
 run v p s =
-  case p ts of
+  let tokens = myLexer s in
+  let showPosToken ((l,c),t) = concat [ show l, ":", show c, "\t", show t ] in
+  case p tokens of
     Left err -> do
-      putStrLn "\nParse              Failed...\n"
-      putStrV v "Tokens:"
-      mapM_ (putStrV v . showPosToken . mkPosToken) ts
-      putStrLn err
+      -- putStrLn "\nParse              Failed...\n"
+      -- putStrV v "Tokens:"
+      -- mapM_ (putStrV v . showPosToken . mkPosToken) tokens
+      -- putStrLn err
+      hPutStrLn stderr err
       exitFailure
     Right tree -> do
-      putStrLn "\nParse Successful!"
+      typeCheck tree
       showTree v tree
-  where
-  ts = myLexer s
-  showPosToken ((l,c),t) = concat [ show l, ":", show c, "\t", show t ]
 
 showTree :: (Show a, Print a) => Int -> a -> IO ()
 showTree v tree = do

@@ -10,7 +10,7 @@ all: latc
 clean:
 	rm -rf $(GRAMMAR_FILES_PATH) $(addsuffix .bak, $(GRAMMAR_FILES_PATH))
 
-latc: $(GRAMMAR_FILES_PATH) src/Main.hs Makefile
+latc: $(GRAMMAR_FILES_PATH) src/Main.hs Makefile src/TypeChecker.hs
 	cabal build
 	cp ./dist-newstyle/build/x86_64-linux/ghc-8.8.4/Lattec-1.0/x/latc/build/latc/latc .
 

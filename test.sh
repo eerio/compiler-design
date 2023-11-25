@@ -1,10 +1,11 @@
 #!/bin/bash
 
 RT=mrjp-tests
+RT2=lattests
 BIN=./latc
 
 
-for filename in $(find "$RT"/good -name "*.lat"); do
+for filename in $(find "$RT"/good "$RT2"/good "$RT2/extensions/*" ! -path "$RT/good/virtual/*" ! -path "$RT/good/arrays/*" -name "*.lat"); do
   [ -e "$filename" ] || continue
   # create temporary files for examination and a pair of fds for each of them
   # that's because we want to read these files and bash doesn't provide a way
@@ -40,13 +41,13 @@ for filename in $(find "$RT"/good -name "*.lat"); do
   fi
 done
 
-# for filename in $(find "$RT"/bad -name "*.lat"); do
-#   [ -e "$filename" ] || continue
-#   if $BIN "$filename" >/dev/null ; then
-#     echo "$filename failed!"
-#   else
-#     echo "$filename: correct"
-#     break
-#   fi
-# done
+for filename in $(find "$RT2"/bad -name "*.lat"); do
+  [ -e "$filename" ] || continue
+  if $BIN "$filename" >/dev/null ; then
+    echo "$filename failed!"
+    break
+  else
+    echo "$filename: correct"
+  fi
+done
 
