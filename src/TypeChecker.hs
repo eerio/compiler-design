@@ -182,7 +182,7 @@ hasReturn (Block _ stmts) = any isReturn stmts
         isReturn (Cond _ (ELitTrue _) stmt) = isReturn stmt
         isReturn (Cond _ _ stmt) = False
         isReturn (BStmt _ block) = hasReturn block
-        isReturn (While _ (ELitTrue _) stmt) = isReturn stmt
+        isReturn (While _ (ELitTrue _) stmt) = True
         isReturn _ = False
 
 
