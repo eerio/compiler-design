@@ -13,6 +13,7 @@ import Control.Monad.Reader
 import Control.Monad.Except
 
 import Data.Map (Map)
+import Data.List (nub)
 import qualified Data.Map as Map
 import qualified Control.Monad
 import Control.Exception (throw)
@@ -20,6 +21,7 @@ import Data.Data (Typeable)
 import Control.Exception.Base (Exception)
 import GHC.Stack (HasCallStack)
 import Control.Monad (foldM)
+import qualified Data.Set as Data
 
 type TypeEnv = Map Ident Type
 
@@ -53,6 +55,7 @@ data Exc' a
     | WrongNumberOfArguments !a
     | TCNotImplemented !a !String
     | NotAnLValue !a
+    | RepeatedDeclaration !a
     deriving (Typeable)
 
 instance {-# OVERLAPPING #-} Show BNFC'Position where
@@ -149,24 +152,61 @@ instance Checkable ProgramC where
 
 instance Checkable BlockC where
     check (Block _ stmts) = do
+        -- check if names in declarations are unique
+        -- if any is not unique, print its position
+        let decls = filter (\case { Decl {} -> True ; _ -> False }) stmts
+        let declNamesPositions = concatMap (\(Decl _ _ items) -> map (\case { NoInit pos ident -> (ident, pos) ; Init pos ident _ -> (ident, pos) }) items) decls
+    
+        foldM_ (\localNames namePosition -> do
+            let (name, pos) = namePosition
+            if Data.member name localNames then
+                throwError $ RepeatedDeclaration pos
+            else
+                return $ Data.insert name localNames
+            ) (Data.empty :: Data.Set Ident) declNamesPositions
+        
+
         env <- ask
         foldM (\env' stmt -> local (const env') (check stmt)) env stmts
+
+-- function to check if block of statements contains return statement
+hasReturn :: BlockC -> Bool
+hasReturn (Block _ stmts) = any isReturn stmts
+    where
+        isReturn :: Stmt -> Bool
+        isReturn (VRet _) = True
+        isReturn (Ret _ _) = True
+        isReturn (CondElse _ (ELitTrue _) stmt _) = isReturn stmt
+        isReturn (CondElse _ (ELitFalse _) _ stmt) = isReturn stmt
+        isReturn (CondElse _ _ stmt1 stmt2) = isReturn stmt1 && isReturn stmt2
+        isReturn (Cond _ (ELitTrue _) stmt) = isReturn stmt
+        isReturn (Cond _ _ stmt) = False
+        isReturn (BStmt _ block) = hasReturn block
+        isReturn (While _ (ELitTrue _) stmt) = isReturn stmt
+        isReturn _ = False
+
 
 instance Checkable TopDef where
     check (FunDecl _ (FunDef pos retType ident args block)) = do
         env <- ask
+        argNames <- mapM (\(Arg _ _ ident) -> return ident) args
+        Control.Monad.when (nub argNames /= argNames) $ throwError $ InvalidReturn pos
         let funType = Fun pos retType args
         let env' = assignType ident funType env        
         local (const $ bindArgs args $ env' {retType = Just retType}) (check block)
-        return env'
+
+        case retType of
+            Void _ -> return env'
+            _ -> if hasReturn block then return env' else throwError $ InvalidReturn pos
+        
         where
             bindArgs :: [ArgC] -> CheckEnv -> CheckEnv
             bindArgs args = assignTypes $ map (\arg -> (getIdent arg, getArgType arg)) args
             getIdent :: ArgC -> Ident
             getIdent (Arg _ _ ident) = ident
     
-    check _ = notImplemented ()
-    
+    check t = notImplemented t
+
     -- check (ClassDecl pos ident classItems) = do
     --     env <- ask
     --     let env' = assignType ident (Cls pos ident) env
@@ -197,7 +237,8 @@ instance Checkable Stmt where
         env <- ask
         case retType env of
             Nothing -> throwError $ InvalidReturn pos
-            Just _ -> ask
+            Just (Void _) -> ask
+            Just t -> throwError $ TypeMismatch "vret" pos t (Void BNFC'NoPosition)
     check (Ret pos expr) = do
         env <- ask
         case retType env of
@@ -229,11 +270,11 @@ instance Checkable Stmt where
                 check stmt2
             _ -> throwError $ TypeMismatch "condelse" pos t (Bool BNFC'NoPosition)
     check (Cond pos expr stmt) = do
-        check expr
-        t <- inspect expr
-        case t of
-            Bool _ -> check stmt
-            _ -> throwError $ TypeMismatch "cond" pos t (Bool BNFC'NoPosition)
+                check expr
+                t <- inspect expr
+                case t of
+                    Bool _ -> check stmt
+                    _ -> throwError $ TypeMismatch "cond" pos t (Bool BNFC'NoPosition)
     -- check (Ass pos (LIdent pos2 ident) expr) = do
     check (Ass pos (EVar pos2 ident) expr) = do
         t1 <- getType pos2 ident
