@@ -28,12 +28,10 @@ for filename in $(find "$RT"/good "$RT2"/good ! -path "$RT/good/virtual/*" ! -pa
       1> >(cat - >&${fd_outw}) \
       2> >(cat - >&${fd_errw})
 
-  # check exit code
-  if [ $? -ne 0 ]; then
+  # check exit code and if first line of stderr is "OK":
+  if [ $? -ne 0 ] || [ "`head -n 1 <&${fd_errr2}`" != "OK" ]; then
     echo "$filename: failed!"
-    # print stderr
     cat <&${fd_errr}
-    # print stdout
     cat <&${fd_outr}
     exit
   else
@@ -41,7 +39,7 @@ for filename in $(find "$RT"/good "$RT2"/good ! -path "$RT/good/virtual/*" ! -pa
   fi
 done
 
-for filename in $(find "$RT2"/bad -name "*.lat"); do
+for filename in $(find "$RT2"/bad "$RT/bad/semantic" -name "*.lat"); do
   [ -e "$filename" ] || continue
   # create temporary files for examination and a pair of fds for each of them
   # that's because we want to read these files and bash doesn't provide a way
@@ -65,13 +63,11 @@ for filename in $(find "$RT2"/bad -name "*.lat"); do
       2> >(cat - >&${fd_errw})
   
   # check exit code
-  if [ $? -ne 0 ]; then
+  if [ $? -ne 0 ] && [ "`head -n 1 <&${fd_errr2}`" = "ERROR" ]; then
     echo "$filename: correct"
   else
     echo "$filename: failed!"
-    # print stderr
     cat <&${fd_errr}
-    # print stdout
     cat <&${fd_outr}
     break
   fi

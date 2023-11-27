@@ -43,15 +43,12 @@ run v p s =
   let showPosToken ((l,c),t) = concat [ show l, ":", show c, "\t", show t ] in
   case p tokens of
     Left err -> do
-      -- putStrLn "\nParse              Failed...\n"
-      -- putStrV v "Tokens:"
-      -- mapM_ (putStrV v . showPosToken . mkPosToken) tokens
-      -- putStrLn err
+      hPutStrLn stderr "ERROR"
       hPutStrLn stderr err
       exitFailure
     Right tree -> do
       typeCheck tree
-      showTree v tree
+      hPutStrLn stderr "OK"
 
 showTree :: (Show a, Print a) => Int -> a -> IO ()
 showTree v tree = do
