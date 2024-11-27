@@ -1,0 +1,113 @@
+Dobry wieczór,
+
+Przesyłam ocenę frontendu Latte. Przy okazji przypominam wszystkim o
+konieczności sprawdzania i rozwiązywania konfliktów w gramatyce dla
+rozszerzonej składni Latte.
+
+Pozdrawiam,
+
+Daria Walukiewicz-Chrząszcz
+
+
+Ocena: 4 - 1 = 3
+
+
+W gramatyce są konflikty
+
+shift/reduce conflicts:  2
+reduce/reduce conflicts: 1
+
+
+Konflikty r/r należy usunąć. Ponadto, trzeba być pewnym, że parser
+dobrze rozwiązuje konflikty s/r
+
+Good: OK
+
+Bad:
+
+1. Zaakceptowano:
+
+a) int main() {
+  while (true) {}
+}
+
+b) pojedynczą deklarację w if/while, np
+
+
+// Samotna deklaracja w instrukcji warunkowej
+
+int f(int x) {
+  printString("A teraz...");
+  return x+1;
+}
+
+int main() {
+
+    if (f(2)>2)
+    printString("A kuku");
+    else
+        string x="Ala ma kota";
+
+    printString(x);
+
+    return 0;
+}
+
+c) porównanie f() i g(), gdzie f,g "zwracają" void
+
+2. Dziwny komunikat
+
+a) Invalid return at (Line 2, column 1)
+
+dla
+
+
+int f(int x, int x) {
+   return x;
+}
+
+int main() {
+   return 1;
+}
+
+b) Invalid return
+
+gdy brak return
+
+c) "erel"Type mismatch
+
+
+d)  Repeated declaration at
+
+przy redefinicji funkcji printInt
+
+e) "void variable"Type mismatch at (Line 5, column 4): expected void, got void
+
+
+3. Komunikat "Not implemented" dla
+
+int main() {
+    true = 20;
+    return 1;
+}
+
+4. Brak rozpoznania funkcji predefiniowanej error()
+
+5. Dlaczego jest źle ?
+
+int main() {
+ int c = 3;
+
+ c+1;
+ (c);
+ return 0;
+}
+
+6. Zła sygnatura main w
+
+// Author: Jacek Tomaszewski 277663
+//main void type
+
+void main() {
+    return 0 ;
+}

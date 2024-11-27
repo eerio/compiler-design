@@ -32,10 +32,7 @@ executable latc
 
     -- Other library packages from which modules are imported.
     build-depends:
-        base ^>=4.13.0.0
-        , array
-        , mtl
-        , containers
+        base, array, mtl, containers
         
 
     -- Directories containing source files.
