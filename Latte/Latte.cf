@@ -24,37 +24,20 @@ separator  nonempty DeclItem "," ;
 
 Block.     BlockC ::= "{" [Stmt] "}" ;
 
+Empty.     Stmt ::= ";" ;
+BStmt.     Stmt ::= BlockC ;
 Decl.      Stmt ::= Type [DeclItem] ";" ;
 Ass.       Stmt ::= LVal "=" Expr  ";" ;
 Incr.      Stmt ::= LVal "++"  ";" ;
 Decr.      Stmt ::= LVal "--"  ";" ;
--- Idea from: https://github.com/antlr/grammars-v4/blob/master/java/java8/Java8Parser.g4
+Ret.       Stmt ::= "return" Expr ";" ;
+VRet.      Stmt ::= "return" ";" ;
 Cond.      Stmt ::= "if" "(" Expr ")" Stmt ;
-CondElse.  Stmt ::= "if" "(" Expr ")" StmtNoShortIf "else" Stmt ;
-
+CondElse.  Stmt ::= "if" "(" Expr ")" Stmt "else" Stmt;
 While.     Stmt ::= "while" "(" Expr ")" Stmt;
 For.       Stmt ::= "for" "(" Type Ident ":" Expr ")" Stmt ;
+SExp.      Stmt ::= Expr ";" ;
 separator  Stmt "" ;
-
-Empty.     StmtNoTrailingSubstatement ::= ";" ;
-BStmt.     StmtNoTrailingSubstatement ::= BlockC ;
-SExp.      StmtNoTrailingSubstatement ::= Expr ";" ;
-Ret.       StmtNoTrailingSubstatement ::= "return" Expr ";" ;
-VRet.      StmtNoTrailingSubstatement ::= "return" ";" ;
-
-NoShortNoTrailing. StmtNoShortIf ::= 
-
-CondElseNoShortIf. Stmt ::= "if" "(" Expr ")" StmtNoShortIf "else" StmtNoShortIf ;
-StmtNoShortIfstatementWithoutTrailingSubstatement. StmtNoShortIf ::= statementWithoutTrailingSubstatement
-StmtNoShortIflabeledStatementNoShortIf. StmtNoShortIf ::= labeledStatementNoShortIf
-StmtNoShortIfifThenElseStatementNoShortIf. StmtNoShortIf ::= ifThenElseStatementNoShortIf
-StmtNoShortIfwhileStatementNoShortIf. StmtNoShortIf ::= whileStatementNoShortIf
-StmtNoShortIfforStatementNoShortIf. StmtNoShortIf ::= forStatementNoShortIf
-. statementWithoutTrailingSubstatement ::= 
-. labeledStatementNoShortIf ::= 
-. ifThenElseStatementNoShortIf ::= 
-. whileStatementNoShortIf ::= 
-. forStatementNoShortIf ::= 
 
 Int.       Type ::= "int" ;
 Str.       Type ::= "string" ;

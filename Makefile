@@ -12,7 +12,7 @@ clean:
 
 latc: $(GRAMMAR_FILES_PATH) src/Main.hs Makefile src/TypeChecker.hs
 	cabal build
-	cp ./dist-newstyle/build/x86_64-linux/ghc-8.8.4/Lattec-1.0/x/latc/build/latc/latc .
+	cp ./dist-newstyle/build/x86_64-linux/ghc-9.0.2/Lattec-1.0/x/latc/build/latc/latc .
 
 $(GRAMMAR_FILES_PATH): $(GRAMMAR_PATH)/Latte.cf
-	bnfc --haskell --functor Latte/Latte.cf -d
+	/home/students/inf/PUBLIC/MRJP/bin/bnfc --haskell --functor Latte/Latte.cf -d
