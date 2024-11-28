@@ -1,103 +1,109 @@
 entrypoints ProgramC ;
-Program.        ProgramC ::= [TopDefC] ;
 
-FunDeclTop.     TopDefC ::= FunDeclC ;
-ClassDeclTop.   TopDefC ::= ClassDeclC ;
+Program.    ProgramC ::= [TopDefC] ;
+
+-------------------------------------------------------------------------------
+-- functions and classes
+
+
+FunDefTop.  TopDefC ::= FunDefC ;
+ClsDefTop.  TopDefC ::= ClsDefC ;
 separator nonempty TopDefC "" ;
 
-ClassMthdDecl.  ClassItemDefC ::= FunDeclC ;
-ClassAttrDecl.  ClassItemDefC ::= Type [AttrItemC] ";" ;
-AttrItem. AttrItemC ::= Ident ;
-separator nonempty AttrItemC "," ;
-separator nonempty ClassItemDefC "" ;
-
-FunDef.    FunDeclC ::= Type Ident "(" [ArgC] ")" BlockC ;
-ClassDecl. ClassDeclC ::= "class" Ident "{" [ClassItemDefC] "}" ;
-ClassDeclExt. ClassDeclC  ::= "class" Ident "extends" Ident "{" [ClassItemDefC] "}" ;
-
-Arg.  	   ArgC ::= Type Ident ;
-separator  ArgC "," ;
-
-Init.      DeclItem ::= Ident "=" Expr ;
-NoInit.    DeclItem ::= Ident ;
-separator  nonempty DeclItem "," ;
+FunDef.     FunDefC ::= Type Ident "(" [ArgC] ")" BlockC ;
+ClsDef.     ClsDefC ::= "class" Ident "{" [ClsMemDeclC] "}" ;
+ClsDefExt.  ClsDefC ::= "class" Ident "extends" Ident "{" [ClsMemDeclC] "}" ;
 
 Block.     BlockC ::= "{" [Stmt] "}" ;
 
-Empty.     Stmt ::= ";" ;
-BStmt.     Stmt ::= BlockC ;
-Decl.      Stmt ::= Type [DeclItem] ";" ;
-Ass.       Stmt ::= LVal "=" Expr  ";" ;
-Incr.      Stmt ::= LVal "++"  ";" ;
-Decr.      Stmt ::= LVal "--"  ";" ;
-Ret.       Stmt ::= "return" Expr ";" ;
-VRet.      Stmt ::= "return" ";" ;
-Cond.      Stmt ::= "if" "(" Expr ")" Stmt ;
-CondElse.  Stmt ::= "if" "(" Expr ")" Stmt "else" Stmt;
-While.     Stmt ::= "while" "(" Expr ")" Stmt;
-For.       Stmt ::= "for" "(" Type Ident ":" Expr ")" Stmt ;
-SExp.      Stmt ::= Expr ";" ;
-separator  Stmt "" ;
+Arg.        ArgC ::= Type Ident ;
+separator ArgC "," ;
 
-Int.       Type ::= "int" ;
-Str.       Type ::= "string" ;
-Bool.      Type ::= "boolean" ;
-Void.      Type ::= "void" ;
-Cls.       Type ::= Ident ;
-Arr.       Type ::= Type "[]" ;
-internal Fun. Type ::= Type "(" [Type] ")" ;
-separator  Type "," ;
+ClsMthdDecl.    ClsMemDeclC ::= FunDefC ;
+ClsAttrDecl.    ClsMemDeclC ::= Type [AttrItemC] ";" ;
+separator nonempty ClsMemDeclC "" ;
+AttrItem.   AttrItemC ::= Ident ;
+separator nonempty AttrItemC "," ;
 
+TCls.   Type ::= Ident ;
+TInt.   Type ::= "int" ;
+TStr.   Type ::= "string" ;
+TBool.  Type ::= "boolean" ;
+TVoid.  Type ::= "void" ;
+TArr.   Type ::= Type "[]" ;
+internal TFun. Type ::= Type "(" [Type] ")" ;
+separator Type "," ;
 
-ELitTrue.  Expr6 ::= "true" ;
-ELitInt.   Expr6 ::= Integer ;
-ELitFalse. Expr6 ::= "false" ;
-EString.   Expr6 ::= String ;
-EApp.      Expr6 ::= Ident "(" [Expr] ")" ;
-EMethodApply. Expr6 ::= Expr6 "." Ident "(" [Expr] ")" ;
+-------------------------------------------------------------------------------
+-- statements
+
+SEmpty.     Stmt ::= ";" ;
+SBlock.     Stmt ::= BlockC ;
+SDecl.      Stmt ::= Type [DeclItem] ";" ;
+SAss.       Stmt ::= LVal "=" Expr  ";" ;
+SIncr.      Stmt ::= LVal "++"  ";" ;
+SDecr.      Stmt ::= LVal "--"  ";" ;
+SRetExp.    Stmt ::= "return" Expr ";" ;
+SRetVoid.   Stmt ::= "return" ";" ;
+SCond.      Stmt ::= "if" "(" Expr ")" Stmt ;
+SCondElse.  Stmt ::= "if" "(" Expr ")" Stmt "else" Stmt;
+SWhile.     Stmt ::= "while" "(" Expr ")" Stmt;
+SFor.       Stmt ::= "for" "(" Type Ident ":" Expr ")" Stmt ;
+SExp.       Stmt ::= Expr ";" ;
+separator Stmt "" ;
+
+DeclInit.   DeclItem ::= Ident "=" Expr ;
+DeclNoInit. DeclItem ::= Ident ;
+separator nonempty DeclItem "," ;
+
+-------------------------------------------------------------------------------
+-- expressions
+
+LVar.       LVal ::= Ident ;
+LArrAcc.    LVal ::= Expr6 "[" Expr "]" ;
+LAttrAcc.   LVal ::= Expr6 "." Ident ;
+
+ELitTrue.   Expr6 ::= "true" ;
+ELitInt.    Expr6 ::= Integer ;
+ELitFalse.  Expr6 ::= "false" ;
+EString.    Expr6 ::= String ;
+EApp.       Expr6 ::= Ident "(" [Expr] ")" ;
+EMethodApply.   Expr6 ::= Expr6 "." Ident "(" [Expr] ")" ;
 -- the below rule encompasses EVar ::= Ident, EArrAcc ::= Expr6[Expr] etc.
-ELVal.     Expr6 ::= LVal ;
-
-ENewArr.   Expr5 ::= "new" Type "[" Expr "]" ;
-ENew.      Expr5 ::= "new" Ident ;
-ENeg.      Expr5 ::= "-" Expr6 ;
-ENot.      Expr5 ::= "!" Expr6 ;
+ELVal.      Expr6 ::= LVal ;
+ENewArr.    Expr5 ::= "new" Type "[" Expr "]" ;
+ENew.       Expr5 ::= "new" Ident ;
+ENeg.       Expr5 ::= "-" Expr6 ;
+ENot.       Expr5 ::= "!" Expr6 ;
 -- the below construction resolves a shift/reduce conflict in the grammar,
 -- which would result from using the naive version:
--- ECast.     Expr5 ::= "(" Ident ")" "null"; -- this introduces a conflict
+-- ECast.      Expr5 ::= "(" Ident ")" "null"; -- this introduces a conflict
 token TokNull (')' [" \t"]* {"null"}) ;
-ECast.     Expr5 ::= "(" Ident TokNull ;
-
-EMul.      Expr4 ::= Expr4 Op2 Expr5 ;
-EAdd.      Expr3 ::= Expr3 Op1 Expr4 ;
-ERel.      Expr2 ::= Expr2 Op3 Expr3 ;
-EAnd.      Expr1 ::= Expr2 Op4 Expr1 ;
-EOr.       Expr  ::= Expr1 Op5 Expr ;
-
-coercions  Expr 6 ;
-separator  Expr "," ;
-
-LVar.     LVal ::= Ident ;
-LArrAcc.  LVal ::= Expr6 "[" Expr "]" ;
-LAttrAcc. LVal ::= Expr6 "." Ident ;
+ECast.      Expr5 ::= "(" Ident TokNull ;
+EMul.       Expr4 ::= Expr4 Op2 Expr5 ;
+EAdd.       Expr3 ::= Expr3 Op1 Expr4 ;
+ERel.       Expr2 ::= Expr2 Op3 Expr3 ;
+EAnd.       Expr1 ::= Expr2 Op4 Expr1 ;
+EOr.        Expr  ::= Expr1 Op5 Expr ;
+coercions Expr 6 ;
+separator Expr "," ;
 
 OpAdd.  Op1 ::= "+" ;
 OpSub.  Op1 ::= "-" ;
-
 OpMul.  Op2 ::= "*" ;
 OpDiv.  Op2 ::= "/" ;
 OpMod.  Op2 ::= "%" ;
+OpLt.   Op3 ::= "<" ;
+OpLe.   Op3 ::= "<=" ;
+OpGt.   Op3 ::= ">" ;
+OpGe.   Op3 ::= ">=" ;
+OpEq.   Op3 ::= "==" ;
+OpNe.   Op3 ::= "!=" ;
+OpAnd.  Op4 ::= "&&" ;
+OpOr.   Op5 ::= "||" ;
 
-OpLt.     Op3 ::= "<" ;
-OpLe.     Op3 ::= "<=" ;
-OpGt.     Op3 ::= ">" ;
-OpGe.     Op3 ::= ">=" ;
-OpEq.     Op3 ::= "==" ;
-OpNe.     Op3 ::= "!=" ;
+-------------------------------------------------------------------------------
+-- technical
 
-OpAnd.    Op4 ::= "&&" ;
-
-OpOr.     Op5 ::= "||" ;
-
-comment    "//" ;
-comment    "/*" "*/" ;
+comment "//" ;
+comment "/*" "*/" ;
