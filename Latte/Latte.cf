@@ -1,84 +1,120 @@
 entrypoints ProgramC ;
-Program.        ProgramC ::= [TopDef] ;
+Program.        ProgramC ::= [TopDefC] ;
 
-FunDecl.        TopDef ::= FunDefC ;
-ClassDecl.      TopDef ::= "class" Ident "{" [ClassItemDef] "}" ;
-ClassDeclExt.   TopDef ::= "class" Ident "extends" Ident "{" [ClassItemDef] "}" ;
-separator nonempty TopDef "" ;
+FunDeclTop.     TopDefC ::= FunDeclC ;
+ClassDeclTop.   TopDefC ::= ClassDeclC ;
+separator nonempty TopDefC "" ;
 
-ClassAttrDecl.  ClassItemDef ::= Type Ident ";" ;
-ClassMthdDecl.  ClassItemDef ::= FunDefC ;
-separator nonempty ClassItemDef "" ;
+ClassMthdDecl.  ClassItemDefC ::= FunDeclC ;
+ClassAttrDecl.  ClassItemDefC ::= Type [AttrItemC] ";" ;
+AttrItem. AttrItemC ::= Ident ;
+separator nonempty AttrItemC "," ;
+separator nonempty ClassItemDefC "" ;
 
-FunDef.    FunDefC ::= Type Ident "(" [ArgC] ")" BlockC ;
+FunDef.    FunDeclC ::= Type Ident "(" [ArgC] ")" BlockC ;
+ClassDecl. ClassDeclC ::= "class" Ident "{" [ClassItemDefC] "}" ;
+ClassDeclExt. ClassDeclC  ::= "class" Ident "extends" Ident "{" [ClassItemDefC] "}" ;
 
 Arg.  	   ArgC ::= Type Ident ;
 separator  ArgC "," ;
 
 Init.      DeclItem ::= Ident "=" Expr ;
 NoInit.    DeclItem ::= Ident ;
-separator  DeclItem "," ;
+separator  nonempty DeclItem "," ;
 
 Block.     BlockC ::= "{" [Stmt] "}" ;
 
-Empty.     Stmt ::= ";" ;
-BStmt.     Stmt ::= BlockC ;
 Decl.      Stmt ::= Type [DeclItem] ";" ;
-Ass.       Stmt ::= Expr "=" Expr  ";" ;
-Incr.      Stmt ::= Expr "++"  ";" ;
-Decr.      Stmt ::= Expr "--"  ";" ;
-Ret.       Stmt ::= "return" Expr ";" ;
-VRet.      Stmt ::= "return" ";" ;
+Ass.       Stmt ::= LVal "=" Expr  ";" ;
+Incr.      Stmt ::= LVal "++"  ";" ;
+Decr.      Stmt ::= LVal "--"  ";" ;
+-- Idea from: https://github.com/antlr/grammars-v4/blob/master/java/java8/Java8Parser.g4
 Cond.      Stmt ::= "if" "(" Expr ")" Stmt ;
-CondElse.  Stmt ::= "if" "(" Expr ")" Stmt "else" Stmt;
+CondElse.  Stmt ::= "if" "(" Expr ")" StmtNoShortIf "else" Stmt ;
+
 While.     Stmt ::= "while" "(" Expr ")" Stmt;
-For.       Stmt ::= "for" "(" Type Ident ":" Ident ")" Stmt ;
-SExp.      Stmt ::= Expr ";" ;
+For.       Stmt ::= "for" "(" Type Ident ":" Expr ")" Stmt ;
 separator  Stmt "" ;
 
-Cls.       Type ::= Ident ;
+Empty.     StmtNoTrailingSubstatement ::= ";" ;
+BStmt.     StmtNoTrailingSubstatement ::= BlockC ;
+SExp.      StmtNoTrailingSubstatement ::= Expr ";" ;
+Ret.       StmtNoTrailingSubstatement ::= "return" Expr ";" ;
+VRet.      StmtNoTrailingSubstatement ::= "return" ";" ;
+
+NoShortNoTrailing. StmtNoShortIf ::= 
+
+CondElseNoShortIf. Stmt ::= "if" "(" Expr ")" StmtNoShortIf "else" StmtNoShortIf ;
+StmtNoShortIfstatementWithoutTrailingSubstatement. StmtNoShortIf ::= statementWithoutTrailingSubstatement
+StmtNoShortIflabeledStatementNoShortIf. StmtNoShortIf ::= labeledStatementNoShortIf
+StmtNoShortIfifThenElseStatementNoShortIf. StmtNoShortIf ::= ifThenElseStatementNoShortIf
+StmtNoShortIfwhileStatementNoShortIf. StmtNoShortIf ::= whileStatementNoShortIf
+StmtNoShortIfforStatementNoShortIf. StmtNoShortIf ::= forStatementNoShortIf
+. statementWithoutTrailingSubstatement ::= 
+. labeledStatementNoShortIf ::= 
+. ifThenElseStatementNoShortIf ::= 
+. whileStatementNoShortIf ::= 
+. forStatementNoShortIf ::= 
+
 Int.       Type ::= "int" ;
 Str.       Type ::= "string" ;
 Bool.      Type ::= "boolean" ;
 Void.      Type ::= "void" ;
+Cls.       Type ::= Ident ;
 Arr.       Type ::= Type "[]" ;
-internal Fun. Type ::= Type "(" [ArgC] ")" ;
+internal Fun. Type ::= Type "(" [Type] ")" ;
 separator  Type "," ;
 
 
-ELitInt.   Expr7 ::= Integer ;
-EString.   Expr7 ::= String ;
-ELitTrue.  Expr7 ::= "true" ;
-ELitFalse. Expr7 ::= "false" ;
-EVar.      Expr7 ::= Ident ;
-EApp.      Expr7 ::= Ident "(" [Expr] ")" ;
-EAt.       Expr7 ::= Expr7 "[" Expr "]" ;
-EAttr.     Expr7 ::= Expr7 "." Ident ;
-EMethod.   Expr7 ::= Expr7 "." Ident "(" [Expr] ")" ;
-ENew.      Expr6 ::= "new" Ident ;
-ENewArr.   Expr6 ::= "new" Type "[" Expr "]" ;
-ECast.     Expr5 ::= "(" Ident ")" Expr6 ;
-ENeg.      Expr5 ::= "-" Expr5 ;
-ENot.      Expr5 ::= "!" Expr5 ;
-EMul.      Expr4 ::= Expr4 MulOp Expr5 ;
-EAdd.      Expr3 ::= Expr3 AddOp Expr4 ;
-ERel.      Expr2 ::= Expr2 RelOp Expr3 ;
-EAnd.      Expr1 ::= Expr2 "&&" Expr1 ;
-EOr.       Expr ::= Expr1 "||" Expr ;
-coercions  Expr 7 ;
+ELitTrue.  Expr6 ::= "true" ;
+ELitInt.   Expr6 ::= Integer ;
+ELitFalse. Expr6 ::= "false" ;
+EString.   Expr6 ::= String ;
+EApp.      Expr6 ::= Ident "(" [Expr] ")" ;
+EMethodApply. Expr6 ::= Expr6 "." Ident "(" [Expr] ")" ;
+-- the below rule encompasses EVar ::= Ident, EArrAcc ::= Expr6[Expr] etc.
+ELVal.     Expr6 ::= LVal ;
+
+ENewArr.   Expr5 ::= "new" Type "[" Expr "]" ;
+ENew.      Expr5 ::= "new" Ident ;
+ENeg.      Expr5 ::= "-" Expr6 ;
+ENot.      Expr5 ::= "!" Expr6 ;
+-- the below construction resolves a shift/reduce conflict in the grammar,
+-- which would result from using the naive version:
+-- ECast.     Expr5 ::= "(" Ident ")" "null"; -- this introduces a conflict
+token TokNull (')' [" \t"]* {"null"}) ;
+ECast.     Expr5 ::= "(" Ident TokNull ;
+
+EMul.      Expr4 ::= Expr4 Op2 Expr5 ;
+EAdd.      Expr3 ::= Expr3 Op1 Expr4 ;
+ERel.      Expr2 ::= Expr2 Op3 Expr3 ;
+EAnd.      Expr1 ::= Expr2 Op4 Expr1 ;
+EOr.       Expr  ::= Expr1 Op5 Expr ;
+
+coercions  Expr 6 ;
 separator  Expr "," ;
 
-Plus.      AddOp ::= "+" ;
-Minus.     AddOp ::= "-" ;
-Times.     MulOp ::= "*" ;
-Div.       MulOp ::= "/" ;
-Mod.       MulOp ::= "%" ;
-LTH.       RelOp ::= "<" ;
-LE.        RelOp ::= "<=" ;
-GTH.       RelOp ::= ">" ;
-GE.        RelOp ::= ">=" ;
-EQU.       RelOp ::= "==" ;
-NE.        RelOp ::= "!=" ;
+LVar.     LVal ::= Ident ;
+LArrAcc.  LVal ::= Expr6 "[" Expr "]" ;
+LAttrAcc. LVal ::= Expr6 "." Ident ;
+
+OpAdd.  Op1 ::= "+" ;
+OpSub.  Op1 ::= "-" ;
+
+OpMul.  Op2 ::= "*" ;
+OpDiv.  Op2 ::= "/" ;
+OpMod.  Op2 ::= "%" ;
+
+OpLt.     Op3 ::= "<" ;
+OpLe.     Op3 ::= "<=" ;
+OpGt.     Op3 ::= ">" ;
+OpGe.     Op3 ::= ">=" ;
+OpEq.     Op3 ::= "==" ;
+OpNe.     Op3 ::= "!=" ;
+
+OpAnd.    Op4 ::= "&&" ;
+
+OpOr.     Op5 ::= "||" ;
 
 comment    "//" ;
 comment    "/*" "*/" ;
