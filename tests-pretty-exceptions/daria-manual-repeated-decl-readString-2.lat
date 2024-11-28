@@ -1,0 +1,3 @@
+string readString(void) { return readString(); }
+
+int main() { return 0; }

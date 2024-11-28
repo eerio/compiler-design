@@ -4,7 +4,8 @@ RT=mrjp-tests
 RT2=lattests
 BIN=./latc
 
-
+# "$RT2"/extensions  "$RT"/gr5 
+# for filename in $(find "$RT"/good "$RT2"/good -name "*.lat"); do
 for filename in $(find "$RT"/good "$RT2"/good ! -path "$RT/good/virtual/*" ! -path "$RT/good/arrays/*" -name "*.lat"); do
   [ -e "$filename" ] || continue
   # create temporary files for examination and a pair of fds for each of them
@@ -33,13 +34,13 @@ for filename in $(find "$RT"/good "$RT2"/good ! -path "$RT/good/virtual/*" ! -pa
     echo "$filename: failed!"
     cat <&${fd_errr}
     cat <&${fd_outr}
-    exit
+    # exit
   else
     echo "$filename: correct"
   fi
 done
 
-for filename in $(find "$RT2"/bad "$RT/bad/semantic" -name "*.lat"); do
+for filename in $(find "$RT2"/bad "$RT/bad/semantic" ! -path "$RT/weird_bad" -name "*.lat"); do
   [ -e "$filename" ] || continue
   # create temporary files for examination and a pair of fds for each of them
   # that's because we want to read these files and bash doesn't provide a way
@@ -69,7 +70,37 @@ for filename in $(find "$RT2"/bad "$RT/bad/semantic" -name "*.lat"); do
     echo "$filename: failed!"
     cat <&${fd_errr}
     cat <&${fd_outr}
-    break
+    # break
   fi
+done
+
+for filename in $(find "tests-pretty-exceptions" -name "*.lat"); do
+  [ -e "$filename" ] || continue
+  # create temporary files for examination and a pair of fds for each of them
+  # that's because we want to read these files and bash doesn't provide a way
+  # to seek in file, so after a write we are unable to go back if we only create
+  # one fd
+  temp_out=$(mktemp)
+  temp_err=$(mktemp)
+  exec {fd_outw}>"$temp_out"
+  exec {fd_outr}<"$temp_out"
+  exec {fd_outr2}<"$temp_out"
+  exec {fd_errw}>"$temp_err"
+  exec {fd_errr}<"$temp_err"
+  exec {fd_errr2}<"$temp_err"
+  rm "$temp_out"
+  rm "$temp_err"
+
+  # execute, save stdout and stderr to temp files for verification
+  $BIN \
+      < "$filename" \
+      1> >(cat - >&${fd_outw}) \
+      2> >(cat - >&${fd_errw})
+  
+  echo -e "\nGENERATING ERROR MESSAGE FOR PROGRAM:"
+  cat "$filename"
+  echo -e "\n"
+  cat <&${fd_errr}
+  cat <&${fd_outr}
 done
 

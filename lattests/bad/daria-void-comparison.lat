@@ -1,0 +1,7 @@
+void f() { return; }
+void g() { return; }
+
+int main() {
+ bool c = f() > g();
+ return 0;
+}

@@ -1,0 +1,5 @@
+string readString() {
+  return "ala";
+}
+
+int main() { return 0; }

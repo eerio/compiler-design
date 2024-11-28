@@ -73,7 +73,7 @@ EMethodApply.   Expr6 ::= Expr6 "." Ident "(" [Expr] ")" ;
 ELVal.      Expr6 ::= LVal ;
 ENewArr.    Expr5 ::= "new" Type "[" Expr "]" ;
 ENew.       Expr5 ::= "new" Ident ;
-ENeg.       Expr5 ::= "-" Expr6 ;
+ENeg.       Expr5 ::= "-" Expr5 ;
 ENot.       Expr5 ::= "!" Expr6 ;
 -- the below construction resolves a shift/reduce conflict in the grammar,
 -- which would result from using the naive version:

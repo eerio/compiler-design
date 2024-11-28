@@ -1,2 +1,11 @@
-Abs.hs Print.hs Lex.x Par.y Test.hs ErrM.hs Skel.hs Doc.txt
+Abs.hs
+Print.hs
+Lex.x
+Par.y
+Test.hs
+ErrM.hs
+Skel.hs
+Doc.txt
+Par.hs
+Par.info
 *.bak

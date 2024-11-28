@@ -1,0 +1,6 @@
+void printInt(string y) {
+}
+
+int main() {
+ return 0;
+}

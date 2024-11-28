@@ -1,0 +1,4 @@
+int main() {
+    true = 20;
+    return 1;
+}

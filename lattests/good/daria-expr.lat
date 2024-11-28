@@ -1,0 +1,7 @@
+int main() {
+ int c = 3;
+
+ c+1;
+ (c);
+ return 0;
+}

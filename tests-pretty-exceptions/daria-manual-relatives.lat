@@ -1,0 +1,12 @@
+int main() {
+  int x = 10;
+  string p = "pawel";
+  
+  if (x < p) {
+    printString("<");
+  } else {
+   printString(">=");
+  }
+
+  return 0;
+}
