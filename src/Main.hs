@@ -25,7 +25,10 @@ import Latte.Print ( Print, printTree )
 import Latte.Skel  ()
 
 import TypeChecker ( typeCheck)
+import BackendLLVM ( emitLLVM )
 import System.IO (hPutStrLn, stderr)
+import Prelude (writeFile)
+import System.FilePath (replaceExtension)
 
 type Err        = Either String
 type ParseFun a = [Token] -> Err a
@@ -35,10 +38,10 @@ putStrV :: Verbosity -> String -> IO ()
 putStrV v s = when (v > 1) $ putStrLn s
 
 runFile :: Verbosity -> ParseFun ProgramC -> FilePath -> IO ()
-runFile v p f = putStrLn f >> readFile f >>= run v p
+runFile v p f = putStrLn f >> readFile f >>= run v p f
 
-run :: Verbosity -> ParseFun ProgramC -> String -> IO ()
-run v p s =
+run :: Verbosity -> ParseFun ProgramC -> String -> String -> IO ()
+run v p f s =
   let tokens = myLexer s in
   let showPosToken ((l,c),t) = concat [ show l, ":", show c, "\t", show t ] in
   case p tokens of
@@ -49,6 +52,8 @@ run v p s =
     Right tree -> do
       typeCheck tree
       hPutStrLn stderr "OK"
+      -- put llvm into file f
+      writeFile (replaceExtension f "ll") $ emitLLVM tree
 
 showTree :: (Show a, Print a) => Int -> a -> IO ()
 showTree v tree = do
@@ -70,7 +75,6 @@ main = do
   args <- getArgs
   case args of
     ["--help"] -> usage
-    []         -> getContents >>= run 2 pProgramC
     "-s":fs    -> mapM_ (runFile 0 pProgramC) fs
     fs         -> mapM_ (runFile 2 pProgramC) fs
 

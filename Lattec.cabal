@@ -26,14 +26,14 @@ executable latc
         Latte.Print
         Latte.Skel
         TypeChecker
+        BackendLLVM
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
 
     -- Other library packages from which modules are imported.
     build-depends:
-        base, array, mtl, containers
-        
+        base, array, mtl, containers, filepath
 
     -- Directories containing source files.
     hs-source-dirs:

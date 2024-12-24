@@ -25,19 +25,26 @@ for filename in $(find "$RT"/good "$RT2"/good ! -path "$RT/good/virtual/*" ! -pa
 
   # execute, save stdout and stderr to temp files for verification
   $BIN \
-      < "$filename" \
+      "$filename" \
       1> >(cat - >&${fd_outw}) \
       2> >(cat - >&${fd_errw})
 
   # check exit code and if first line of stderr is "OK":
-  if [ $? -ne 0 ] || [ "`head -n 1 <&${fd_errr2}`" != "OK" ]; then
+  if [ $? -ne 0 ] || [ "`head -n 1 <&${fd_errr}`" != "OK" ]; then
     echo "$filename: failed!"
-    cat <&${fd_errr}
+    cat <&${fd_errr2}
     cat <&${fd_outr}
-    # exit
+    exit
   else
     echo "$filename: correct"
   fi
+
+  exec {fd_outw}>&-
+  exec {fd_outr}<&-
+  exec {fd_outr2}<&-
+  exec {fd_errw}>&-
+  exec {fd_errr}<&-
+  exec {fd_errr2}<&-
 done
 
 for filename in $(find "$RT2"/bad "$RT/bad/semantic" ! -path "$RT/weird_bad" -name "*.lat"); do
@@ -59,19 +66,26 @@ for filename in $(find "$RT2"/bad "$RT/bad/semantic" ! -path "$RT/weird_bad" -na
 
   # execute, save stdout and stderr to temp files for verification
   $BIN \
-      < "$filename" \
+      "$filename" \
       1> >(cat - >&${fd_outw}) \
       2> >(cat - >&${fd_errw})
   
   # check exit code
-  if [ $? -ne 0 ] && [ "`head -n 1 <&${fd_errr2}`" = "ERROR" ]; then
+  if [ $? -ne 0 ] && [ "`head -n 1 <&${fd_errr}`" = "ERROR" ]; then
     echo "$filename: correct"
   else
     echo "$filename: failed!"
-    cat <&${fd_errr}
+    cat <&${fd_errr2}
     cat <&${fd_outr}
-    # break
+    exit
   fi
+
+  exec {fd_outw}>&-
+  exec {fd_outr}<&-
+  exec {fd_outr2}<&-
+  exec {fd_errw}>&-
+  exec {fd_errr}<&-
+  exec {fd_errr2}<&-
 done
 
 for filename in $(find "tests-pretty-exceptions" -name "*.lat"); do
@@ -93,14 +107,33 @@ for filename in $(find "tests-pretty-exceptions" -name "*.lat"); do
 
   # execute, save stdout and stderr to temp files for verification
   $BIN \
-      < "$filename" \
+      "$filename" \
       1> >(cat - >&${fd_outw}) \
       2> >(cat - >&${fd_errw})
+
+  # check exit code
+  if [ $? -eq 0 ]; then
+    echo "$filename: failed!"
+    cat <&${fd_errr}
+    cat <&${fd_outr}
+    exit
+  fi
+
+  cmp <(cat <&${fd_errr}) "${filename%.lat}.err"
+  if [ $? -ne 0 ]; then
+    echo "$filename: failed! (actual message above, expected below)"
+    cat <&${fd_errr2}
+    cat "${filename%.lat}.err"
+    exit
+  fi
   
-  echo -e "\nGENERATING ERROR MESSAGE FOR PROGRAM:"
-  cat "$filename"
-  echo -e "\n"
-  cat <&${fd_errr}
-  cat <&${fd_outr}
+  echo "$filename: correct"
+
+  exec {fd_outw}>&-
+  exec {fd_outr}<&-
+  exec {fd_outr2}<&-
+  exec {fd_errw}>&-
+  exec {fd_errr}<&-
+  exec {fd_errr2}<&-
 done
 

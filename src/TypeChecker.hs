@@ -117,8 +117,8 @@ inspect (ELitTrue pos) = return $ TBool pos
 inspect (ELitFalse pos) = return $ TBool pos
 inspect (ERel pos lhs _ rhs) = return $ TBool pos
 inspect (ELVal pos (LVar _ ident)) = getType pos ident
-inspect (ELVal pos (LArrAcc _ ident _)) = notImplemented "array access"
-inspect (ELVal pos (LAttrAcc _ ident _)) = notImplemented "attribute access"
+inspect (ELVal pos (LArrAcc _ expr_arr expr_ind)) = notImplemented "array access"
+inspect (ELVal pos (LAttrAcc _ expr ident)) = notImplemented "attribute access"
 inspect (EAdd pos lhs _ rhs) = inspect lhs
 inspect (EMul pos lhs _ rhs) = return $ TInt pos
 inspect (ENeg pos expr) = return $ TInt pos
@@ -170,27 +170,18 @@ instance Checkable ProgramC where
         let funNamesPositions = map (\(FunDef pos _ ident _ _) -> (ident, pos)) funs
         -- add symbols already defined in env to funNamesPositiosn
         let envNames = Map.keys $ typeEnv env
-        let funNamesPositions' = funNamesPositions ++ map (, BNFC'NoPosition) envNames
 
         foldM_ (\localNames namePosition -> do
             let (name, pos) = namePosition
-            if Data.member name localNames then
-                if name `elem` [Ident "printString", Ident "printInt", Ident "readString", Ident "readInt", Ident "error"] then
-                    throwError $ RedeclarationOfBuiltIn name pos
-                else
+            if name `elem` [Ident "printString", Ident "printInt", Ident "readString", Ident "readInt", Ident "error"] then
+                throwError $ RedeclarationOfBuiltIn name pos
+            else 
+                if Data.member name localNames then
                     throwError $ RepeatedSDeclaration pos
-            else
-                return $ Data.insert name localNames
-            ) (Data.empty :: Data.Set Ident) funNamesPositions'
+                else
+                    return $ Data.insert name localNames
+            ) (Data.empty :: Data.Set Ident) funNamesPositions
 
-
-        -- -- verify no redefinition of initial functions
-        -- foldM_ (\_ name -> do
-        --     if Map.member name (typeEnv env) then
-        --         return ()
-        --     else
-        --         throwError $ RepeatedSDeclaration BNFC'NoPosition
-        --     ) () initialFunNames
 
         let env' = assignTypes (map (\(FunDef pos retType ident args _) -> (ident, TFun pos retType (map (\(Arg _ t _) -> t) args))) (filterFuns topDefs)) env
         foldM_ (\env' topDef -> local (const env') (check topDef)) env' topDefs
@@ -278,7 +269,7 @@ instance Checkable ClsMemDeclC where
     --         bindArgs args = assignTypes $ map (\arg -> (getIdent arg, getArgType arg)) args
     --         getIdent :: ArgC -> Ident
     --         getIdent (Arg _ _ ident) = ident
-    
+
     -- check e = notImplemented e
 
 instance Checkable TopDefC where
@@ -305,7 +296,7 @@ instance Checkable TopDefC where
             bindArgs args = assignTypes $ map (\arg -> (getIdent arg, getArgType arg)) args
             getIdent :: ArgC -> Ident
             getIdent (Arg _ _ ident) = ident
-    
+
     -- unverified
     check (ClsDefTop pos (ClsDef _ ident clsMembers)) = do
         env <- ask
@@ -313,7 +304,7 @@ instance Checkable TopDefC where
         Control.Monad.when (Map.member ident (typeEnv env)) $ throwError $ RepeatedSDeclaration pos
         let env' = assignType ident (TCls pos ident) env
         foldM (\env' clsMember -> local (const env') (check clsMember)) env' clsMembers
-    
+
     -- unverified
     check (ClsDefTop pos (ClsDefExt _ ident identExt clsMembers)) = do
         env <- ask
@@ -405,7 +396,7 @@ instance Checkable Stmt where
         check expr
         t2 <- inspect expr
         if t1 == t2 then ask else throwError $ TypeMismatch "Right-hand side type doesn't match assignment target type!" pos t1 t2
-    
+
     check (SAss pos (LArrAcc pos2 expr_arr expr_ind) expr) = do
         check expr_arr
         t1 <- inspect expr_arr
@@ -419,7 +410,7 @@ instance Checkable Stmt where
                     TArr _ t3 -> ask
                     _ -> throwError $ TypeMismatch "RHS value type doesn't match array element type!" pos t1 t3
             _ -> throwError $ TypeMismatch "Index not an int!" pos t2 t1
-    
+
     check (SAss pos (LAttrAcc _ expr ident) expr_assigned) = do
         t1 <- inspect expr
         check expr_assigned
@@ -461,11 +452,11 @@ instance Checkable Expr where
         where
             firstNotMatching (x:xs) (y:ys) = if x == y then firstNotMatching xs ys else (x, y)
             firstNotMatching _ _ = undefined
-    
+
     check (ELVal pos (LVar _ ident)) = do
         getType pos ident
         ask
-    
+
     check (ELVal pos (LArrAcc pos2 expr_arr expr)) = do
         check expr_arr
         t <- inspect expr_arr
@@ -474,7 +465,7 @@ instance Checkable Expr where
         case t' of
             TInt _ -> ask
             _ -> throwError $ TypeMismatch "Invalid index type" pos t' (TInt BNFC'NoPosition)
-    
+
     check (ELVal pos (LAttrAcc pos2 expr ident)) = do
         check expr
         t <- inspect expr
@@ -482,16 +473,16 @@ instance Checkable Expr where
             TCls _ ident -> ask
             TArr _ _ -> if ident == Ident "length" then ask else throwError $ TypeMismatch "Arrays have no attributes" pos t (TCls BNFC'NoPosition ident)
             _ -> throwError $ TypeMismatch "Invalid attribute access" pos t (TCls BNFC'NoPosition ident)
-    
+
     check (ERel pos expr1 op expr2) = do
         t1 <- inspect expr1
         t2 <- inspect expr2
         if t1 == t2 then
-            case t1 of 
+            case t1 of
                 TVoid _ -> throwError $ TypeMismatch "Cannot compare void types!" pos t1 t2
                 _ -> ask
         else throwError $ TypeMismatch "Incomparable types!" pos t1 t2
-    
+
     check (ENeg pos expr) = do
         check expr
         t <- inspect expr

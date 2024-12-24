@@ -1,0 +1,2 @@
+ERROR
+latc: Redeclaration of built-in function "printInt" at (Line 1, column 1)

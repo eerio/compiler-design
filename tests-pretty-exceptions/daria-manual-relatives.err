@@ -1,0 +1,2 @@
+ERROR
+latc: Incomparable types! Type mismatch at (Line 5, column 7): expected string, got int

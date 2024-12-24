@@ -1,3 +1,4 @@
+*.ll
 dist-newstyle
 Latte/Abs.hs
 Latte/Doc.txt
