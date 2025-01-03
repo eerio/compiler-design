@@ -5,18 +5,30 @@
 module Main where
 
 import Prelude
-  ( ($), (.)
-  , Either(..)
-  , Int, (>)
-  , String, (++), concat, unlines
-  , Show, show
-  , IO, (>>), (>>=), mapM_, putStrLn
-  , FilePath
-  , getContents, readFile
-  )
+    ( ($),
+      (.),
+      Either(..),
+      Int,
+      (>),
+      String,
+      (++),
+      concat,
+      unlines,
+      Show,
+      show,
+      IO,
+      (>>),
+      (>>=),
+      mapM_,
+      putStrLn,
+      FilePath,
+      getContents,
+      readFile,
+      writeFile )
 import System.Environment ( getArgs )
 import System.Exit        ( exitFailure )
-import Control.Monad      ( when )
+import System.Process     ( system )
+import Control.Monad      ( when, Monad (return) )
 
 import Latte.Abs   ( ProgramC )
 import Latte.Lex   ( Token, mkPosToken )
@@ -27,7 +39,6 @@ import Latte.Skel  ()
 import TypeChecker ( typeCheck)
 import BackendLLVM ( emitLLVM )
 import System.IO (hPutStrLn, stderr)
-import Prelude (writeFile)
 import System.FilePath (replaceExtension)
 
 type Err        = Either String
@@ -54,6 +65,10 @@ run v p f s =
       hPutStrLn stderr "OK"
       -- put llvm into file f
       writeFile (replaceExtension f "ll") $ emitLLVM tree
+      _ <- system $ "llvm-as -o bitcode.bc " ++ replaceExtension f "ll"
+      _ <- system $ "llvm-link -o " ++ replaceExtension f "bc" ++ " bitcode.bc lib/runtime.bc"
+      _ <- system "rm bitcode.bc"
+      return ()
 
 showTree :: (Show a, Print a) => Int -> a -> IO ()
 showTree v tree = do

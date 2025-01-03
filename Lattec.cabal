@@ -33,7 +33,7 @@ executable latc
 
     -- Other library packages from which modules are imported.
     build-depends:
-        base, array, mtl, containers, filepath
+        base, array, mtl, containers, filepath, process
 
     -- Directories containing source files.
     hs-source-dirs:

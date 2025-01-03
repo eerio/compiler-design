@@ -1,8 +1,8 @@
 {-# LANGUAGE FlexibleInstances, LambdaCase #-}
 {-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE TupleSections #-}
 
-module TypeChecker (typeCheck) where
+
+module TypeChecker (typeCheck, CheckEnv, typeCheck_) where
 
 import Latte.Par
 import Latte.Abs
@@ -175,7 +175,7 @@ instance Checkable ProgramC where
             let (name, pos) = namePosition
             if name `elem` [Ident "printString", Ident "printInt", Ident "readString", Ident "readInt", Ident "error"] then
                 throwError $ RedeclarationOfBuiltIn name pos
-            else 
+            else
                 if Data.member name localNames then
                     throwError $ RepeatedSDeclaration pos
                 else
@@ -233,51 +233,11 @@ hasReturn (Block _ stmts) = any isReturn stmts
 
 
 instance Checkable ClsMemDeclC where
-    check e = notImplemented e
-    -- check (ClsAttrDecl _ t items) = do
-    --     env <- ask
-    --     foldM (\env' item -> local (const env') (check_item item)) env items
-
-    --     where
-    --     check_item (DeclNoInit _ ident) = asks $ assignType ident t
-    --     check_item (DeclInit pos ident expr) = do
-    --         env <- ask
-    --         check expr
-    --         t' <- inspect expr
-    --         if t == t' then return $ assignType ident t env else throwError $ TypeMismatch "decl" pos t t'
-
-    -- check (ClsMthdDecl _ (FunDef pos retType ident args block)) = do
-    --     env <- ask
-    --     -- if a function exists in the environment, reject
-    --     -- Control.Monad.when (Map.member ident (typeEnv env)) $ throwError $ RepeatedSDeclaration pos
-
-    --     -- if any argument has void type, reject
-    --     foldM_ (\_ (Arg _ t _) -> Control.Monad.when (t == TVoid BNFC'NoPosition) $ throwError $ TypeMismatch "arg" pos t (TVoid BNFC'NoPosition)) () args
-
-    --     argNames <- mapM (\(Arg _ _ ident) -> return ident) args
-    --     Control.Monad.when (nub argNames /= argNames) $ throwError $ DuplicatedParameterNames pos
-    --     let funType = TFun pos retType (map (\(Arg _ t _) -> t) args)
-    --     let env' = assignType ident funType env
-    --     local (const $ bindArgs args $ env' {retType = Just retType}) (check block)
-
-    --     case retType of
-    --         TVoid _ -> return env'
-    --         _ -> if hasReturn block then return env' else throwError $ InvalidReturn pos
-
-    --     where
-    --         bindArgs :: [ArgC] -> CheckEnv -> CheckEnv
-    --         bindArgs args = assignTypes $ map (\arg -> (getIdent arg, getArgType arg)) args
-    --         getIdent :: ArgC -> Ident
-    --         getIdent (Arg _ _ ident) = ident
-
-    -- check e = notImplemented e
+    check = notImplemented
 
 instance Checkable TopDefC where
     check (FunDefTop _ (FunDef pos retType ident args block)) = do
         env <- ask
-        -- if a function exists in the environment, reject
-        -- Control.Monad.when (Map.member ident (typeEnv env)) $ throwError $ RepeatedSDeclaration pos
-
         -- if any argument has void type, reject
         foldM_ (\_ (Arg _ t _) -> Control.Monad.when (t == TVoid BNFC'NoPosition) $ throwError $ TypeMismatch "Parameter cannot have void type!" pos t (TVoid BNFC'NoPosition)) () args
 
@@ -435,11 +395,8 @@ instance Checkable Expr where
             TFun pos2 retType argTypes -> do
                 Control.Monad.when (length exprs /= length argTypes) $ throwError $ WrongNumberOfArguments pos
                 exprTypes <- mapM inspect exprs
-                -- let argRawTypes = map getArgType argTypes
                 let argRawTypes = argTypes
-                -- let exprLValue = map (\case { ELVal _ _ -> True ; _ -> False }) exprs
                 let exprLValue = map (\case { _ -> False }) exprs
-                -- let argRef = map (\case { ArgRef {} -> True ; _ -> False }) argTypes
                 let argRef = map (\case { _ -> False }) argTypes
                 if exprTypes /= argRawTypes then
                     let foo = firstNotMatching exprTypes argRawTypes in
@@ -516,7 +473,7 @@ instance Checkable Expr where
                 TInt _ -> ask
                 _ -> throwError $ TypeMismatch "Cannot multiply an int by a non-int!" pos t1 t2
             _ -> throwError $ TypeMismatch "* operator only supported for ints!" pos t1 t2
-    -- check (ELVal _ _ ) = ask
+    
     check (ELitInt _ _) = ask
     check (EString _ _) = ask
     check (ELitTrue _) = ask
@@ -559,6 +516,25 @@ instance Checkable Expr where
         ask
     check e = notImplemented e
 
+initEnv = CheckEnv {
+    typeEnv = Map.fromList [
+        (Ident "printString", TFun BNFC'NoPosition (TVoid BNFC'NoPosition) [TStr BNFC'NoPosition]),
+        (Ident "printInt", TFun BNFC'NoPosition (TVoid BNFC'NoPosition) [TInt BNFC'NoPosition]),
+        (Ident "readInt", TFun BNFC'NoPosition (TInt BNFC'NoPosition) []),
+        (Ident "readString", TFun BNFC'NoPosition (TStr BNFC'NoPosition) []),
+        (Ident "error", TFun BNFC'NoPosition (TVoid BNFC'NoPosition) [])
+    ],
+    retType = Nothing,
+    inLoop = False
+}
+
+typeCheck_ :: ProgramC -> Except Exc CheckEnv
+typeCheck_ p = do
+    case runIdentity $ runExceptT $ runReaderT (check p) initEnv of
+        Left err -> throw err
+        Right env -> return env
+        
+
 typeCheck :: ProgramC -> IO ()
 typeCheck p = do
     case runIdentity $ runExceptT $ runReaderT (check p) initEnv of
@@ -566,17 +542,3 @@ typeCheck p = do
             hPutStrLn stderr "ERROR"
             throw err
         Right env -> return ()
-    where
-        initEnv = CheckEnv {
-            typeEnv = Map.fromList [
-                -- (Ident "print", Fun BNFC'NoPosition (Void BNFC'NoPosition) [Arg BNFC'NoPosition (Str BNFC'NoPosition) (Ident "_")]),
-                (Ident "printString", TFun BNFC'NoPosition (TVoid BNFC'NoPosition) [TStr BNFC'NoPosition]),
-                (Ident "printInt", TFun BNFC'NoPosition (TVoid BNFC'NoPosition) [TInt BNFC'NoPosition]),
-                -- (Ident "atoi", Fun BNFC'NoPosition (TInt BNFC'NoPosition) [Arg BNFC'NoPosition (Str BNFC'NoPosition) (Ident "_")]),
-                (Ident "readInt", TFun BNFC'NoPosition (TInt BNFC'NoPosition) []),
-                (Ident "readString", TFun BNFC'NoPosition (TStr BNFC'NoPosition) []),
-                (Ident "error", TFun BNFC'NoPosition (TVoid BNFC'NoPosition) [])
-            ],
-            retType = Nothing,
-            inLoop = False
-        }
