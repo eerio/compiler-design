@@ -1,3 +1,4 @@
+*.bc
 *.ll
 dist-newstyle
 Latte/Abs.hs

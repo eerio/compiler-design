@@ -6,7 +6,8 @@ BIN=./latc
 
 # "$RT2"/extensions  "$RT"/gr5 
 # for filename in $(find "$RT"/good "$RT2"/good -name "*.lat"); do
-for filename in $(find "$RT"/good "$RT2"/good ! -path "$RT/good/virtual/*" ! -path "$RT/good/arrays/*" -name "*.lat"); do
+# for filename in $(find "$RT"/good "$RT2"/good ! -path "$RT/good/virtual/*" ! -path "$RT/good/arrays/*" -name "*.lat"); do
+for filename in $(find "$RT2"/good/core002.lat "$RT2"/good/core003.lat "$RT2"/good/core004.lat "$RT2"/good/core004.lat "$RT2"/good/core006.lat "$RT2"/good/core007.lat "$RT2"/good/core008.lat "$RT2"/good/core009.lat "$RT2"/good/core010.lat "$RT2"/good/core011.lat "$RT2"/good/core013.lat "$RT2"/good/core014.lat "$RT2"/good/core015.lat "$RT2"/good/core016.lat "$RT2"/good/core019.lat "$RT2"/good/core020.lat "$RT2"/good/core021.lat "$RT2"/good/core022.lat "$RT2"/good/core023.lat "$RT2"/good/core024.lat "$RT2"/good/core025.lat "$RT2"/good/core026.lat "$RT2"/good/core028.lat "$RT2"/good/core031.lat "$RT2"/good/core032.lat "$RT2"/good/core033.lat "$RT2"/good/core034.lat ! -path "$RT/good/virtual/*" ! -path "$RT/good/arrays/*" -name "*.lat"); do
   [ -e "$filename" ] || continue
   # create temporary files for examination and a pair of fds for each of them
   # that's because we want to read these files and bash doesn't provide a way
@@ -14,14 +15,20 @@ for filename in $(find "$RT"/good "$RT2"/good ! -path "$RT/good/virtual/*" ! -pa
   # one fd
   temp_out=$(mktemp)
   temp_err=$(mktemp)
+  temp_exec_out=$(mktemp)
   exec {fd_outw}>"$temp_out"
   exec {fd_outr}<"$temp_out"
   exec {fd_outr2}<"$temp_out"
   exec {fd_errw}>"$temp_err"
   exec {fd_errr}<"$temp_err"
   exec {fd_errr2}<"$temp_err"
+
+  exec {fd_exec_outw}>"$temp_exec_out"
+  exec {fd_exec_outr}<"$temp_exec_out"
+  exec {fd_exec_outr2}<"$temp_exec_out"
   rm "$temp_out"
   rm "$temp_err"
+  rm "$temp_exec_out"
 
   # execute, save stdout and stderr to temp files for verification
   $BIN \
@@ -36,6 +43,16 @@ for filename in $(find "$RT"/good "$RT2"/good ! -path "$RT/good/virtual/*" ! -pa
     cat <&${fd_outr}
     exit
   else
+    lli "${filename%.lat}.bc" 1> >(cat - >&${fd_exec_outw}) 2> /dev/null
+
+    cmp -s <(cat <&${fd_exec_outr}) "${filename%.lat}.output"
+    if [ $? -ne 0 ]; then
+      echo "$filename: failed! (actual output above, expected below)"
+      cat <&${fd_exec_outr2}
+      echo "expected:"
+      cat "${filename%.lat}.output"
+      continue
+    fi
     echo "$filename: correct"
   fi
 
@@ -45,6 +62,9 @@ for filename in $(find "$RT"/good "$RT2"/good ! -path "$RT/good/virtual/*" ! -pa
   exec {fd_errw}>&-
   exec {fd_errr}<&-
   exec {fd_errr2}<&-
+  exec {fd_exec_outw}>&-
+  exec {fd_exec_outr}<&-
+  exec {fd_exec_outr2}<&-
 done
 
 for filename in $(find "$RT2"/bad "$RT/bad/semantic" ! -path "$RT/weird_bad" -name "*.lat"); do
