@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdlib.h>
-#include <assert.h>
 
 void printInt(int n)
 {
@@ -73,19 +72,4 @@ int __eqStrings(char *str1, char *str2)
 char* __calloc(int size) 
 {
     return (char*) calloc(1, size);
-}
-
-char* concat(char *str1, char *str2, int len1, int len2)
-{
-    assert (len1 > 0 && len2 > 0);
-    assert (str1 != NULL && str2 != NULL);
-    assert (str1[len1 - 1] == 0 && str2[len2 - 1] == 0);
-
-    size_t s = len1 + len2 - 1;
-
-    char* res = malloc(sizeof(char) * s);
-    memcpy(res, str1, len1);
-    memcpy(res + len1 - 1, str2, len2);
-
-    return res;
 }

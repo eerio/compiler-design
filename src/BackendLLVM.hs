@@ -168,7 +168,8 @@ instance Compilable ProgramC where
                 "declare void @printString(i8*)",
                 "declare void @error()",
                 "declare i32 @readInt()",
-                "declare i8* @readString()"
+                "declare i8* @readString()",
+                "declare i8* @__addStrings(i8*, i8*)"
                 ]
         compiledTopDefs <- traverse compile topDefs
         let code = mconcat compiledTopDefs
@@ -192,7 +193,7 @@ instance Compilable (ArgC' BNFC'Position) where
         return $ singleton $ llvmType ++ " %" ++ name
 
 instance Compilable FunDefC where
-    compile (FunDef _ retType_ (Ident name) args block) = do
+    compile (FunDef _ retType_ (Ident name) args block@(Block _ stmts)) = do
         let retType = llvmType retType_
         argsCompiled <- toList . mconcat <$> traverse compile args
         let argsStr = Data.List.intercalate ", " argsCompiled
@@ -216,8 +217,17 @@ instance Compilable FunDefC where
                     "store " ++ show llvmTypeArg ++ " %" ++ name ++ ", " ++ show llvmTypeReg  ++ " " ++ show register ++ " ; already loaded\n"
                 ) args
         let newVars = Data.Map.fromList varLocs
+
+        let retStmt = case retType of
+                VoidType -> SRetVoid BNFC'NoPosition
+                I32Type -> SRetExp BNFC'NoPosition (ELitInt BNFC'NoPosition 0)
+                I1Type -> SRetExp BNFC'NoPosition (ELitFalse BNFC'NoPosition)
+                PointerType p -> SRetExp BNFC'NoPosition (EString BNFC'NoPosition "")
+                _ -> error "Internal compiler error: no return type"
+        let block' = Block BNFC'NoPosition (stmts ++ [retStmt])
+
         body <- local (\env -> env { returnType = Just retType, var = newVars }) $ do
-            compile block
+            compile block'
         return $ header <> loadArgs <> body <> Data.Sequence.singleton "\n}\n"
 
 instance Compilable BlockC where
@@ -227,7 +237,7 @@ instance Compilable BlockC where
                 Just VoidType -> SRetVoid BNFC'NoPosition
                 Just I32Type -> SRetExp BNFC'NoPosition (ELitInt BNFC'NoPosition 0)
                 Just I1Type -> SRetExp BNFC'NoPosition (ELitFalse BNFC'NoPosition)
-                Just (PointerType p) -> error "Internal compiler error: returning pointer"
+                Just (PointerType p) -> SRetExp BNFC'NoPosition (EString BNFC'NoPosition "")
                 Nothing -> error "Internal compiler error: no return type"
         compile retStmt
 
@@ -239,14 +249,10 @@ instance Compilable BlockC where
                 Just VoidType -> SRetVoid BNFC'NoPosition
                 Just I32Type -> SRetExp BNFC'NoPosition (ELitInt BNFC'NoPosition 0)
                 Just I1Type -> SRetExp BNFC'NoPosition (ELitFalse BNFC'NoPosition)
-                Just (PointerType p) -> error "Internal compiler error: returning pointer"
+                Just (PointerType p) -> SRetExp BNFC'NoPosition (EString BNFC'NoPosition "")
                 Nothing -> error "Internal compiler error: no return type"
 
-        let stmts' = case last stmts of
-                SRetExp {} -> stmts
-                SRetVoid {} -> stmts
-                _ -> stmts ++ [retStmt]
-        compiledStmts <- traverse compile stmts'
+        compiledStmts <- traverse compile stmts
         modify (\st -> st { localVars = prev_vars })
         return $ mconcat compiledStmts
 
@@ -359,6 +365,38 @@ instance Compilable Stmt where
             body <> singleton ("br label " ++ condLabel ++ "\n") <>
             singleton (tail endLabel ++ ":\n")
 
+-- TODO: use phi
+
+getRawString :: Value -> IM (Data.Sequence.Seq String, Value)
+getRawString (StringLiteral ind length) = do
+    loc <- gets currentLoc
+    modify (\st -> st { currentLoc = loc + 1 })
+    let returnReg = Register loc (PointerType I8Type)
+    return (
+        singleton (show returnReg ++ " = getelementptr inbounds [" ++ show length ++ " x i8], [" ++ show length ++ " x i8]* @strings" ++ show ind ++ ", i32 0, i32 0\n"),
+        returnReg
+        )
+getRawString reg@(Register loc (PointerType I8Type)) = return (
+    singleton "",
+    reg
+    )
+
+
+concatStrings :: Expr -> Expr -> IM (Data.Sequence.Seq String, Value)
+concatStrings expr1 expr2 = do
+    (llvmCode1, val1) <- compileExpr expr1
+    (llvmCode2, val2) <- compileExpr expr2
+    (loadCode1, val1') <- getRawString val1
+    (loadCode2, val2') <- getRawString val2
+    loc <- gets currentLoc
+    modify (\st -> st { currentLoc = loc + 1 })
+    let returnReg = Register loc (PointerType I8Type)
+    return (
+        llvmCode1 <> llvmCode2 <> loadCode1 <> loadCode2 <>
+        singleton (show returnReg ++ " = call i8* @__addStrings(i8* " ++ show val1' ++ ", i8* " ++ show val2' ++ ")\n"),
+        returnReg
+        )
+
 compileExpr :: Expr -> IM (Data.Sequence.Seq String, Value)
 compileExpr (EApp _ (Ident ident) args) = do
     compiledArgs <- traverse (\expr -> do
@@ -422,18 +460,22 @@ compileExpr (ENeg _ expr) = do
     return (llvmCode <> singleton (show (Register loc argType) ++ " = sub " ++ show argType ++ " 0, " ++ show val ++ "; ENeg \n"), Register loc argType)
 compileExpr (EAdd _ expr1 op expr2) = do
     (llvmCode1, val1raw) <- compileExpr expr1
-    (loadCode1, val1) <- dereferenceIfNeed val1raw
-    (llvmCode2, val2raw) <- compileExpr expr2
-    (loadCode2, val2) <- dereferenceIfNeed val2raw
-    let argType = llvmType val1
+    case val1raw of
+        StringLiteral ind length -> concatStrings expr1 expr2
+        Register loc (PointerType I8Type) -> concatStrings expr1 expr2
+        _ -> do
+            (loadCode1, val1) <- dereferenceIfNeed val1raw
+            (llvmCode2, val2raw) <- compileExpr expr2
+            (loadCode2, val2) <- dereferenceIfNeed val2raw
+            let argType = llvmType val1
 
-    let llvmCode = llvmCode1 <> llvmCode2 <> loadCode1 <> loadCode2
-    loc <- gets currentLoc
-    modify (\st -> st { currentLoc = loc + 1 })
-    let returnReg = Register loc argType
-    case op of
-        OpAdd _ -> return (llvmCode <> singleton (show returnReg ++ " = add " ++ show argType ++ " " ++ show val1 ++ ", " ++ show val2 ++ "; EAdd\n"), returnReg)
-        OpSub _ -> return (llvmCode <> singleton (show returnReg ++ " = sub " ++ show argType ++ " " ++ show val1 ++ ", " ++ show val2 ++ "; ESub\n"), returnReg)
+            let llvmCode = llvmCode1 <> llvmCode2 <> loadCode1 <> loadCode2
+            loc <- gets currentLoc
+            modify (\st -> st { currentLoc = loc + 1 })
+            let returnReg = Register loc argType
+            case op of
+                OpAdd _ -> return (llvmCode <> singleton (show returnReg ++ " = add " ++ show argType ++ " " ++ show val1 ++ ", " ++ show val2 ++ "; EAdd\n"), returnReg)
+                OpSub _ -> return (llvmCode <> singleton (show returnReg ++ " = sub " ++ show argType ++ " " ++ show val1 ++ ", " ++ show val2 ++ "; ESub\n"), returnReg)
 compileExpr (EMul _ expr1 op expr2) = do
     (llvmCode1, val1raw) <- compileExpr expr1
     (llvmCode2, val2raw) <- compileExpr expr2
