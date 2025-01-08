@@ -1,7 +1,4 @@
 {-# LANGUAGE FlexibleInstances #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-{-# HLINT ignore "Use newtype instead of data" #-}
-{-# LANGUAGE LambdaCase #-}
 module BackendLLVM ( emitLLVM ) where
 
 import Latte.Abs
@@ -292,8 +289,7 @@ instance Compilable Stmt where
     compile (SRetVoid _) = pure $ singleton "ret void\n"
     compile (SRetExp _ exp) = do
         (llvmCode, val) <- compileExpr exp
-        (loadCode, valLoaded) <- dereferenceIfNeed val
-        return $ llvmCode <> loadCode <> singleton ("ret " ++ show (llvmType valLoaded) ++ " " ++ show valLoaded ++ "\n")
+        return $ llvmCode <> singleton ("ret " ++ show (llvmType val) ++ " " ++ show val ++ "\n")
     compile (SDecl _ decltype items) = do
         initExprs <- traverse declareItem items
         return $ mconcat initExprs
@@ -302,26 +298,24 @@ instance Compilable Stmt where
 
             declareItem :: DeclItem' BNFC'Position -> IM (Data.Sequence.Seq String)
             declareItem (DeclInit _ (Ident name) expr) = do
-                (llvmCode, valRaw) <- compileExpr expr
-                (loadCode, val) <- dereferenceIfNeed valRaw
+                (llvmCode, val) <- compileExpr expr
                 loc <- gets currentLoc
                 modify (\st -> st { currentLoc = loc + 1 })
                 let regType = PointerType type_
                 let reg = Register loc regType
                 modify (\st -> st { localVars = Data.Map.insert (Ident name) reg (localVars st) })
-                return $ llvmCode <> loadCode <> singleton ("%v" ++ show loc ++ " = alloca " ++ show type_ ++ "\n") <>
+                return $ llvmCode <> singleton ("%v" ++ show loc ++ " = alloca " ++ show type_ ++ "\n") <>
                     singleton ("store " ++ show type_ ++ " " ++ show val ++ ", " ++ show regType ++ " " ++ show reg ++ " ; declaration\n")
             declareItem (DeclNoInit _ (Ident name)) = do
                 loc <- gets currentLoc
                 modify (\st -> st { currentLoc = loc + 1 })
-                let regType = PointerType $ type_
+                let regType = PointerType type_
                 let reg = Register loc regType
                 modify (\st -> st { localVars = Data.Map.insert (Ident name) reg (localVars st) })
                 return $ singleton ("%v" ++ show loc ++ " = alloca " ++ show type_ ++ "\n")
 
     compile (SCondElse _ exp stmt1 stmt2) = do
-        (llvmCode, valraw) <- compileExpr exp
-        (loadCode, val) <- dereferenceIfNeed valraw
+        (llvmCode, val) <- compileExpr exp
         thenBlock <- compile stmt1
         elseBlock <- compile stmt2
         condLabelN <- gets currentLabel
@@ -329,30 +323,27 @@ instance Compilable Stmt where
         let condTrueLabel = "%condTrue" ++ show condLabelN
         let condFalseLabel = "%condFalse" ++ show condLabelN
         let endLabel = "%condEnd" ++ show condLabelN
-        return $ llvmCode <> loadCode <> singleton ("br i1 " ++ show val ++ ", label " ++ condTrueLabel ++ ", label " ++ condFalseLabel ++ "\n") <>
+        return $ llvmCode <> singleton ("br i1 " ++ show val ++ ", label " ++ condTrueLabel ++ ", label " ++ condFalseLabel ++ "\n") <>
             singleton (tail condTrueLabel ++ ":\n") <> thenBlock <> singleton ("br label " ++ endLabel ++ "\n") <>
             singleton (tail condFalseLabel ++ ":\n") <> elseBlock <> singleton ("br label " ++ endLabel ++ "\n") <>
             singleton (tail endLabel ++ ":\n")
     compile (SCond _ exp stmt) = do
-        (llvmCode, valraw) <- compileExpr exp
-        (loadCode, val) <- dereferenceIfNeed valraw
+        (llvmCode, val) <- compileExpr exp
         thenBlock <- compile stmt
         condLabelN <- gets currentLabel
         modify (\st -> st { currentLabel = condLabelN + 1 })
         let condTrueLabel = "%condTrue" ++ show condLabelN
         let endLabel = "%condEnd" ++ show condLabelN
-        return $ llvmCode <> loadCode <> singleton ("br i1 " ++ show val ++ ", label " ++ condTrueLabel ++ ", label " ++ endLabel ++ "\n") <>
+        return $ llvmCode <> singleton ("br i1 " ++ show val ++ ", label " ++ condTrueLabel ++ ", label " ++ endLabel ++ "\n") <>
             singleton (tail condTrueLabel ++ ":\n") <> thenBlock <> singleton ("br label " ++ endLabel ++ "\n") <>
             singleton (tail endLabel ++ ":\n")
     compile (SAss _ lval exp) = do
         (llvmCodeLVal, valLVal) <- compileLVal lval
         (llvmCodeExp, valExp) <- compileExpr exp
-        (loadCode, valExp') <- dereferenceIfNeed valExp
-        let valExpType = llvmType valExp'
-        return $ llvmCodeLVal <> llvmCodeExp <> loadCode <> singleton ("store " ++ show valExpType ++ " " ++ show valExp' ++ ", " ++ show (PointerType valExpType) ++ " " ++ show valLVal ++ "\n")
+        let valExpType = llvmType valExp
+        return $ llvmCodeLVal <> llvmCodeExp <> singleton ("store " ++ show valExpType ++ " " ++ show valExp ++ ", " ++ show (PointerType valExpType) ++ " " ++ show valLVal ++ "\n")
     compile (SWhile _ exp stmt) = do
         (llvmCode, val) <- compileExpr exp
-        (loadCode, valLoaded) <- dereferenceIfNeed val
         loopLabelN <- gets currentLabel
         modify (\st -> st { currentLabel = loopLabelN + 1 })
         let condLabel = "%loopCond" ++ show loopLabelN
@@ -360,12 +351,10 @@ instance Compilable Stmt where
         let endLabel = "%loopEnd" ++ show loopLabelN
         body <- compile stmt
         return $ singleton ("br label " ++ condLabel ++ "\n") <>
-            singleton (tail condLabel ++ ":\n") <> llvmCode <> loadCode <> singleton ("br i1 " ++ show valLoaded ++ ", label " ++ loopLabel ++ ", label " ++ endLabel ++ "\n") <>
+            singleton (tail condLabel ++ ":\n") <> llvmCode <> singleton ("br i1 " ++ show val ++ ", label " ++ loopLabel ++ ", label " ++ endLabel ++ "\n") <>
             singleton (tail loopLabel ++ ":\n") <> 
             body <> singleton ("br label " ++ condLabel ++ "\n") <>
             singleton (tail endLabel ++ ":\n")
-
--- TODO: use phi
 
 getRawString :: Value -> IM (Data.Sequence.Seq String, Value)
 getRawString (StringLiteral ind length) = do
@@ -381,7 +370,6 @@ getRawString reg@(Register loc (PointerType I8Type)) = return (
     reg
     )
 
-
 concatStrings :: Expr -> Expr -> IM (Data.Sequence.Seq String, Value)
 concatStrings expr1 expr2 = do
     (llvmCode1, val1) <- compileExpr expr1
@@ -393,7 +381,7 @@ concatStrings expr1 expr2 = do
     let returnReg = Register loc (PointerType I8Type)
     return (
         llvmCode1 <> llvmCode2 <> loadCode1 <> loadCode2 <>
-        singleton (show returnReg ++ " = call i8* @__addStrings(i8* " ++ show val1' ++ ", i8* " ++ show val2' ++ ")\n"),
+        singleton (show returnReg ++ " = call i8* @__internal_concat(i8* " ++ show val1' ++ ", i8* " ++ show val2' ++ ")\n"),
         returnReg
         )
 
@@ -421,7 +409,6 @@ compileExpr (EApp _ (Ident ident) args) = do
     let argsWithTypes = zip argTypes argVals
     let argsStr = Data.List.intercalate ", " $ map (\(argType, argVal) -> show argType ++ " " ++ show argVal) argsWithTypes
 
-    -- get new loc
     loc <- gets currentLoc
     modify (\st -> st { currentLoc = loc + 1 })
     let returnRegister = Register loc retType
@@ -435,12 +422,10 @@ compileExpr (ELVal _ lval) = do
     return (llvmCode <> loadCode, valLoaded)
 
 compileExpr (ERel _ expr1 op expr2) = do
-    (llvmCode1, val1raw) <- compileExpr expr1
-    (loadCode1, val1) <- dereferenceIfNeed val1raw
-    (llvmCode2, val2raw) <- compileExpr expr2
-    (loadCode2, val2) <- dereferenceIfNeed val2raw
+    (llvmCode1, val1) <- compileExpr expr1
+    (llvmCode2, val2) <- compileExpr expr2
     let argType = llvmType val1
-    let llvmCode = llvmCode1 <> llvmCode2 <> loadCode1 <> loadCode2
+    let llvmCode = llvmCode1 <> llvmCode2
     loc <- gets currentLoc
     modify (\st -> st { currentLoc = loc + 1 })
     return (llvmCode <> singleton (show (Register loc I1Type) ++ " = icmp " ++ case op of
@@ -459,17 +444,15 @@ compileExpr (ENeg _ expr) = do
     modify (\st -> st { currentLoc = loc + 1 })
     return (llvmCode <> singleton (show (Register loc argType) ++ " = sub " ++ show argType ++ " 0, " ++ show val ++ "; ENeg \n"), Register loc argType)
 compileExpr (EAdd _ expr1 op expr2) = do
-    (llvmCode1, val1raw) <- compileExpr expr1
-    case val1raw of
+    (llvmCode1, val1) <- compileExpr expr1
+    case val1 of
         StringLiteral ind length -> concatStrings expr1 expr2
         Register loc (PointerType I8Type) -> concatStrings expr1 expr2
         _ -> do
-            (loadCode1, val1) <- dereferenceIfNeed val1raw
-            (llvmCode2, val2raw) <- compileExpr expr2
-            (loadCode2, val2) <- dereferenceIfNeed val2raw
+            (llvmCode2, val2) <- compileExpr expr2
             let argType = llvmType val1
 
-            let llvmCode = llvmCode1 <> llvmCode2 <> loadCode1 <> loadCode2
+            let llvmCode = llvmCode1 <> llvmCode2
             loc <- gets currentLoc
             modify (\st -> st { currentLoc = loc + 1 })
             let returnReg = Register loc argType
@@ -477,12 +460,10 @@ compileExpr (EAdd _ expr1 op expr2) = do
                 OpAdd _ -> return (llvmCode <> singleton (show returnReg ++ " = add " ++ show argType ++ " " ++ show val1 ++ ", " ++ show val2 ++ "; EAdd\n"), returnReg)
                 OpSub _ -> return (llvmCode <> singleton (show returnReg ++ " = sub " ++ show argType ++ " " ++ show val1 ++ ", " ++ show val2 ++ "; ESub\n"), returnReg)
 compileExpr (EMul _ expr1 op expr2) = do
-    (llvmCode1, val1raw) <- compileExpr expr1
-    (llvmCode2, val2raw) <- compileExpr expr2
-    (loadCode1, val1) <- dereferenceIfNeed val1raw
-    (loadCode2, val2) <- dereferenceIfNeed val2raw
+    (llvmCode1, val1) <- compileExpr expr1
+    (llvmCode2, val2) <- compileExpr expr2
     let argType = llvmType val1
-    let llvmCode = llvmCode1 <> llvmCode2 <> loadCode1 <> loadCode2
+    let llvmCode = llvmCode1 <> llvmCode2
     loc <- gets currentLoc
     modify (\st -> st { currentLoc = loc + 1 })
     let returnReg = Register loc argType
@@ -498,47 +479,38 @@ compileExpr (EString _ str) = do
 compileExpr (ELitTrue _) = pure (singleton "", ConstValue (I1 True))
 compileExpr (ELitFalse _) = pure (singleton "", ConstValue (I1 False))
 compileExpr (ENot _ expr) = do
-    (llvmCode, valraw) <- compileExpr expr
-    (loadCode, val) <- dereferenceIfNeed valraw
+    (llvmCode, val) <- compileExpr expr
     loc <- gets currentLoc
     modify (\st -> st { currentLoc = loc + 1 })
     let returnReg = Register loc I1Type
-    return (llvmCode <> loadCode <> singleton (show returnReg ++ " = xor i1 1, " ++ show val ++ "\n"), returnReg)
+    return (llvmCode <> singleton (show returnReg ++ " = xor i1 1, " ++ show val ++ "\n"), returnReg)
 compileExpr (EOr _ expr1 _ expr2) = do
     (code, val) <- compileExpr (ENot BNFC'NoPosition (EAnd BNFC'NoPosition (ENot BNFC'NoPosition expr1) (OpAnd BNFC'NoPosition) (ENot BNFC'NoPosition expr2)))
     return (code, val)
 compileExpr (EAnd _ expr1 _ expr2) = do
     (llvmCode1, val1) <- compileExpr expr1
-    (loadCode1, val1') <- dereferenceIfNeed val1
     labelAnd <- gets currentLabel
     modify (\st -> st { currentLabel = labelAnd + 1 })
     (llvmCode2, val2) <- compileExpr expr2
-    (loadCode2, val2') <- dereferenceIfNeed val2
     loc <- gets currentLoc
     modify (\st -> st { currentLoc = loc + 1 })
     resultLoc <- gets currentLoc
     modify (\st -> st { currentLoc = resultLoc + 1 })
+    let labelStart = "%andStart" ++ show labelAnd
     let labelCheckSecond = "%andCheckSecond" ++ show labelAnd
-    let labelFalse = "%andFalse" ++ show labelAnd
-    let labelTrue = "%andTrue" ++ show labelAnd
     let labelEnd = "%andEnd" ++ show labelAnd
     let returnRegPtr = Register loc (PointerType I1Type)
     let returnReg = Register resultLoc I1Type
     return (
-        llvmCode1 <> loadCode1 <>
+        llvmCode1 <>
         singleton (show returnRegPtr ++ " = alloca i1\n") <>
-        singleton ("br i1 " ++ show val1' ++ ", label " ++ labelCheckSecond ++ ", label " ++ labelFalse ++ "\n") <>
+        singleton (tail labelStart ++ ":\n") <>
+        singleton ("br i1 " ++ show val1 ++ ", label " ++ labelCheckSecond ++ ", label " ++ labelEnd ++ "\n") <>
         singleton (tail labelCheckSecond ++ ":\n") <>
-        llvmCode2 <> loadCode2 <>
-        singleton ("br i1 " ++ show val2' ++ ", label " ++ labelTrue ++ ", label " ++ labelFalse ++ "\n") <>
-        singleton (tail labelFalse ++ ":\n") <>
-        singleton ("store i1 0, i1* " ++ show returnRegPtr ++ "\n") <>
-        singleton ("br label " ++ labelEnd ++ "\n") <>
-        singleton (tail labelTrue ++ ":\n") <>
-        singleton ("store i1 1, i1* " ++ show returnRegPtr ++ "\n") <>
+        llvmCode2 <>
         singleton ("br label " ++ labelEnd ++ "\n") <>
         singleton (tail labelEnd ++ ":\n") <>
-        singleton (show returnReg ++ " = load i1, i1* " ++ show returnRegPtr ++ "\n")
+        singleton (show returnReg ++ " = phi i1 [ true, " ++ tail labelStart ++ " ], [ " ++ show val2 ++ ", " ++ tail labelCheckSecond ++ " ]\n")
         , returnReg)
 
 compileExpr (ENewArr _ type_ expr) = error "not implemented"

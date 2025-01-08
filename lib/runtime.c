@@ -3,21 +3,21 @@
 #include <string.h>
 #include <stdlib.h>
 
+void error()
+{
+    fprintf(stderr, "runtime error\n");
+    exit(1);
+}
+
 void printInt(int n)
 {
     printf("%d\n", n);
 }
 
-void printString(char *str)
+void printString(char *s)
 {
-    if (str != NULL)
-        printf("%s\n", str);
-}
-
-void error()
-{
-    fprintf(stderr, "runtime error\n");
-    exit(1);
+    if (!s) { error(); }
+    printf("%s\n", s);
 }
 
 int readInt() 
@@ -31,45 +31,32 @@ int readInt()
 
 char* readString() 
 {
-    char *str = NULL;
-    size_t ss;
-    size_t s = getline(&str, &ss, stdin);
+    char *lineptr = NULL;
+    size_t n_buf;
+    size_t n_read = getline(&lineptr, &n_buf, stdin);
 
-    if (s == -1) 
+    if (n_read == -1) 
         error();
 
-    str[s - 1] = '\0';
-    return str;
+    lineptr[n_read - 1] = '\0';
+    return lineptr;
 }
 
-char* __addStrings(char *str1, char *str2)
+char* __internal_concat(char *str1, char *str2)
 {
-    if (str1 == NULL)
-        return str2;
-    else if (str2 == NULL)
-        return str1;
+    if (!str1) { error(); }
+    if (!str2) { error(); }
 
     size_t len1 = strlen(str1);
     size_t len2 = strlen(str2);
 
-    size_t s = len1 + len2 + 1;
+    size_t len = len1 + len2 + 1;
 
-    char* res = malloc(sizeof(char) * s);
-    if (res == NULL)
-        error();
+    char* res = malloc(sizeof(char) * len);
+    if (!res) { error(); }
     memcpy(res, str1, len1);
     memcpy(res + len1, str2, len2);
-    res[s - 1] = 0;
+    res[len - 1] = 0;
 
     return res;
-}
-
-int __eqStrings(char *str1, char *str2)
-{
-    return strcmp(str1, str2) == 0;
-}
-
-char* __calloc(int size) 
-{
-    return (char*) calloc(1, size);
 }
