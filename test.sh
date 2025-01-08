@@ -7,7 +7,7 @@ BIN=./latc
 # "$RT2"/extensions  "$RT"/gr5
 # for filename in $(find "$RT"/good "$RT2"/good -name "*.lat"); do
 # for filename in $(find "$RT"/good "$RT2"/good ! -path "$RT/good/virtual/*" ! -path "$RT/good/arrays/*" -name "*.lat"); do
-for filename in $(find "$RT2"/good/ ! -path "$RT/good/virtual/*" ! -path "$RT/good/arrays/*" ! -path "$RT2"/good/daria-error.lat -name "*.lat"); do
+for filename in $(find "$RT2"/good/ "$RT"/good/basic ! -path "$RT/good/virtual/*" ! -path "$RT/good/arrays/*" ! -path "$RT2"/good/daria-error.lat -name "*.lat"); do
   [ -e "$filename" ] || continue
   # create temporary files for examination and a pair of fds for each of them
   # that's because we want to read these files and bash doesn't provide a way

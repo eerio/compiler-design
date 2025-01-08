@@ -17,6 +17,10 @@ import qualified Control.Monad.RWS as Data.Sequence
 import qualified Data.List
 import Data.Maybe (Maybe)
 import Data.Foldable (toList)
+import Data.Char(ord)
+import Numeric(showHex)
+import Text.ParserCombinators.ReadP (char)
+
 
 data PrimitiveType =
     VoidType
@@ -158,6 +162,12 @@ emitLLVM prog@(Program _ topDefs) = do
     let (output, _) = runIM (compile prog) (initEnv {functionRetTypes = functionRetTypes, functionArgTypes = functionArgTypes}) initState
     concat $ Data.Foldable.toList output
 
+
+charToHex :: Char -> String
+charToHex c = do
+    let hex = showHex (ord c) ""
+    if length hex == 1 then "\\0" ++ hex else "\\" ++ hex
+
 instance Compilable ProgramC where
     compile (Program _ topDefs) = do
         let initCode = Data.Sequence.singleton $ unlines [
@@ -171,7 +181,9 @@ instance Compilable ProgramC where
         compiledTopDefs <- traverse compile topDefs
         let code = mconcat compiledTopDefs
         allStrings <- gets strings
-        let llvmStrings = unlines $ map (\(str, ind) -> "@strings" ++ show ind ++ " = private unnamed_addr constant [" ++ show (length str + 1) ++ " x i8] c\"" ++ str ++ "\\00\"") $ Data.Map.toList allStrings
+        -- change string to hex encoding
+        let prepString rawStr = "\"" ++ concatMap charToHex rawStr ++ "\\00\""
+        let llvmStrings = unlines $ map (\(str, ind) -> "@strings" ++ show ind ++ " = private constant [" ++ show (length str + 1) ++ " x i8] c" ++ prepString str ++ "\n") $ Data.Map.toList allStrings
         return $ initCode <> singleton llvmStrings <> code
 
 instance Compilable TopDefC where
@@ -352,7 +364,7 @@ instance Compilable Stmt where
         body <- compile stmt
         return $ singleton ("br label " ++ condLabel ++ "\n") <>
             singleton (tail condLabel ++ ":\n") <> llvmCode <> singleton ("br i1 " ++ show val ++ ", label " ++ loopLabel ++ ", label " ++ endLabel ++ "\n") <>
-            singleton (tail loopLabel ++ ":\n") <> 
+            singleton (tail loopLabel ++ ":\n") <>
             body <> singleton ("br label " ++ condLabel ++ "\n") <>
             singleton (tail endLabel ++ ":\n")
 
