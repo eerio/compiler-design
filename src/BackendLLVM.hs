@@ -498,19 +498,23 @@ compileExpr (EAnd _ expr1 _ expr2) = do
     modify (\st -> st { currentLoc = resultLoc + 1 })
     let labelStart = "%andStart" ++ show labelAnd
     let labelCheckSecond = "%andCheckSecond" ++ show labelAnd
+    let labelCheckSecondEnd = "%andCheckSecondEnd" ++ show labelAnd
     let labelEnd = "%andEnd" ++ show labelAnd
     let returnRegPtr = Register loc (PointerType I1Type)
     let returnReg = Register resultLoc I1Type
     return (
         llvmCode1 <>
         singleton (show returnRegPtr ++ " = alloca i1\n") <>
+        singleton ("br label " ++ labelStart ++ "\n") <>
         singleton (tail labelStart ++ ":\n") <>
         singleton ("br i1 " ++ show val1 ++ ", label " ++ labelCheckSecond ++ ", label " ++ labelEnd ++ "\n") <>
         singleton (tail labelCheckSecond ++ ":\n") <>
         llvmCode2 <>
+        singleton ("br label " ++ labelCheckSecondEnd ++ "\n") <>
+        singleton (tail labelCheckSecondEnd ++ ":\n") <>
         singleton ("br label " ++ labelEnd ++ "\n") <>
         singleton (tail labelEnd ++ ":\n") <>
-        singleton (show returnReg ++ " = phi i1 [ true, " ++ tail labelStart ++ " ], [ " ++ show val2 ++ ", " ++ tail labelCheckSecond ++ " ]\n")
+        singleton (show returnReg ++ " = phi i1 [ false, " ++ labelStart ++ " ], [ " ++ show val2 ++ ", " ++ labelCheckSecondEnd ++ " ]\n")
         , returnReg)
 
 compileExpr (ENewArr _ type_ expr) = error "not implemented"

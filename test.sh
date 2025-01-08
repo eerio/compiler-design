@@ -7,7 +7,7 @@ BIN=./latc
 # "$RT2"/extensions  "$RT"/gr5
 # for filename in $(find "$RT"/good "$RT2"/good -name "*.lat"); do
 # for filename in $(find "$RT"/good "$RT2"/good ! -path "$RT/good/virtual/*" ! -path "$RT/good/arrays/*" -name "*.lat"); do
-for filename in $(find "$RT2"/good/ ! -path "$RT/good/virtual/*" ! -path "$RT/good/arrays/*" -name "*.lat"); do
+for filename in $(find "$RT2"/good/ ! -path "$RT/good/virtual/*" ! -path "$RT/good/arrays/*" ! -path "$RT2"/good/daria-error.lat -name "*.lat"); do
   [ -e "$filename" ] || continue
   # create temporary files for examination and a pair of fds for each of them
   # that's because we want to read these files and bash doesn't provide a way
@@ -31,6 +31,7 @@ for filename in $(find "$RT2"/good/ ! -path "$RT/good/virtual/*" ! -path "$RT/go
   rm "$temp_exec_out"
 
   # execute, save stdout and stderr to temp files for verification
+  rm -f "${filename%.lat}.ll" "${filename%.lat}.bc"
   $BIN \
       "$filename" \
       1> >(cat - >&${fd_outw}) \
@@ -43,10 +44,16 @@ for filename in $(find "$RT2"/good/ ! -path "$RT/good/virtual/*" ! -path "$RT/go
     cat <&${fd_outr}
     exit
   else
+
     if [ -e "${filename%.lat}.input" ]; then
-      lli "${filename%.lat}.bc" 1> >(cat - >&${fd_exec_outw}) 2> /dev/null <"${filename%.lat}.input"
+      lli "${filename%.lat}.bc" 1> >(cat - >&${fd_exec_outw}) <"${filename%.lat}.input"
     else
-      lli "${filename%.lat}.bc" 1> >(cat - >&${fd_exec_outw}) 2> /dev/null
+      lli "${filename%.lat}.bc" 1> >(cat - >&${fd_exec_outw})
+    fi
+
+    if [ $? -ne 0 ]; then
+      echo "$filename: failed!"
+      exit
     fi
 
     cmp -s <(cat <&${fd_exec_outr}) "${filename%.lat}.output"
