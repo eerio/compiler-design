@@ -166,7 +166,7 @@ instance Compilable ProgramC where
                 "declare void @error()",
                 "declare i32 @readInt()",
                 "declare i8* @readString()",
-                "declare i8* @__addStrings(i8*, i8*)"
+                "declare i8* @__internal_concat(i8*, i8*)"
                 ]
         compiledTopDefs <- traverse compile topDefs
         let code = mconcat compiledTopDefs
