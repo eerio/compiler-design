@@ -5,9 +5,9 @@ if [ $? -ne 0 ]; then
   exit
 fi
 if [ -e "$1".input ]; then
-  lli "$1".bc <"$1".input 1>"$1".output 2>/dev/null
+  lli "$1".bc <"$1".input 2>/dev/null
 else
-  lli "$1".bc 1>"$1".output 2>/dev/null
+  lli "$1".bc 2>/dev/null
 fi
 if [ $? -ne 0 ]; then
   echo "failed!"
