@@ -185,6 +185,11 @@ instance Checkable ProgramC where
 
         let env' = assignTypes (map (\(FunDef pos retType ident args _) -> (ident, TFun pos retType (map (\(Arg _ t _) -> t) args))) (filterFuns topDefs)) env
         foldM_ (\env' topDef -> local (const env') (check topDef)) env' topDefs
+        -- ensure no __internal_concat function is defined
+        case Map.lookup (Ident "__internal_concat") (typeEnv env') of
+            Just (TFun pos _ _) -> throwError $ RedeclarationOfBuiltIn (Ident "__internal_concat") pos
+            _ -> return env'
+        
         -- check main type
         case Map.lookup (Ident "main") (typeEnv env') of
             Nothing -> throwError $ NoEntryPoint BNFC'NoPosition
