@@ -25,13 +25,15 @@ import GHC.Stack (HasCallStack)
 import Control.Monad (foldM)
 import qualified Data.Set as Data
 import GHC.ResponseFile (expandResponse)
+import System.Process (CreateProcess(env))
 
 type TypeEnv = Map Ident Type
 
 data CheckEnv = CheckEnv {
     typeEnv :: !TypeEnv,
     retType :: !(Maybe Type),
-    inLoop :: !Bool
+    inLoop :: !Bool,
+    classes :: !(Map Ident (Maybe Ident, TypeEnv))
 }
 
 modifyEnv :: (TypeEnv -> TypeEnv) -> CheckEnv -> CheckEnv
@@ -63,6 +65,7 @@ data Exc' a
     | DuplicatedParameterNames !a
     | NoReturn !a
     | RedeclarationOfBuiltIn !Ident !a
+    | NoSuchAttribute !a !Ident
     deriving (Typeable)
 
 instance {-# OVERLAPPING #-} Show BNFC'Position where
@@ -96,6 +99,7 @@ instance Show Exc where
     show (DuplicatedParameterNames pos) = "Duplicated parameter names at " ++ show pos
     show (NoReturn pos) = "No return in function returning non-void at " ++ show pos
     show (RedeclarationOfBuiltIn (Ident ident) pos) = "Redeclaration of built-in function " ++ show ident ++ " at " ++ show pos
+    show (NoSuchAttribute pos ident) = "No such attribute " ++ show ident ++ " at " ++ show pos
 
 instance Exception Exc
 
@@ -110,29 +114,58 @@ getType pos ident = do
     env <- ask
     evalMaybe (UnknownIdentifier pos ident) (Map.lookup ident (typeEnv env))
 
-inspect :: Expr -> IM Type
-inspect (ELitInt pos _) = return $ TInt pos
-inspect (EString pos _) = return $ TStr pos
-inspect (ELitTrue pos) = return $ TBool pos
-inspect (ELitFalse pos) = return $ TBool pos
-inspect (ERel pos lhs _ rhs) = return $ TBool pos
-inspect (ELVal pos (LVar _ ident)) = getType pos ident
-inspect (ELVal pos (LArrAcc _ expr_arr expr_ind)) = notImplemented "array access"
-inspect (ELVal pos (LAttrAcc _ expr ident)) = notImplemented "attribute access"
-inspect (EAdd pos lhs _ rhs) = inspect lhs
-inspect (EMul pos lhs _ rhs) = return $ TInt pos
-inspect (ENeg pos expr) = return $ TInt pos
-inspect (EApp pos ident args) = do
-    t <- getType pos ident
-    case t of
-        TFun _ retType argTypes -> return retType
-        _ -> throwError $ NotAFunction pos
-inspect (EAnd pos lhs _ rhs) = return $ TBool pos
-inspect (EOr pos lhs _ rhs) = return $ TBool pos
-inspect (ENot pos expr) = return $ TBool pos
-inspect (ENewArr pos t expr) = return $ TArr pos t
-inspect (ENew pos ident) = getType pos ident
-inspect e = notImplemented e
+class Inspectable a where
+    inspect :: a -> IM Type
+
+instance Inspectable Expr where
+    inspect (ELitInt pos _) = return $ TInt pos
+    inspect (EString pos _) = return $ TStr pos
+    inspect (ELitTrue pos) = return $ TBool pos
+    inspect (ELitFalse pos) = return $ TBool pos
+    inspect (ERel pos lhs _ rhs) = return $ TBool pos
+    inspect (ELVal pos (LVar _ ident)) = getType pos ident
+    inspect (ELVal pos (LArrAcc _ expr_arr expr_ind)) = notImplemented "array access"
+    inspect (ELVal pos (LAttrAcc _ expr ident)) = notImplemented "attribute access"
+    inspect (EAdd pos lhs _ rhs) = inspect lhs
+    inspect (EMul pos lhs _ rhs) = return $ TInt pos
+    inspect (ENeg pos expr) = return $ TInt pos
+    inspect (EApp pos ident args) = do
+        t <- getType pos ident
+        case t of
+            TFun _ retType argTypes -> return retType
+            _ -> throwError $ NotAFunction pos
+    inspect (EAnd pos lhs _ rhs) = return $ TBool pos
+    inspect (EOr pos lhs _ rhs) = return $ TBool pos
+    inspect (ENot pos expr) = return $ TBool pos
+    inspect (ENewArr pos t expr) = return $ TArr pos t
+    inspect (ENew pos ident) = return $ TCls pos ident
+    inspect (EMethodApply pos expr ident args) = do
+        t <- inspect expr
+        case t of
+            TCls _ clsname -> do
+                env <- ask
+                let classes' = classes env
+                case Map.lookup clsname classes' of
+                    Just (baseCls, classEnv) -> do
+                        case Map.lookup ident classEnv of
+                            Just (TFun pos2 retType argTypes) -> return retType
+                            Nothing -> throwError $ NoSuchAttribute pos ident
+                    Nothing -> throwError $ UnknownIdentifier pos ident
+            _ -> throwError $ TypeMismatch "Not a class!" pos t (TCls BNFC'NoPosition ident)
+    inspect (ECast pos ident _) = do
+        classes' <- asks classes
+        case Map.lookup ident classes' of
+            Just classEnv -> return $ TCls pos ident
+            Nothing -> throwError $ UnknownIdentifier pos ident
+
+instance Inspectable ArgC where
+    inspect (Arg _ t _) = return t
+
+instance Inspectable FunDefC where
+    inspect (FunDef pos retType ident args block) = do
+        args' <- mapM inspect args
+        return $ TFun pos retType args'
+
 
 notImplemented :: (Show a) => a -> IM b
 notImplemented x = throwError $ TCNotImplemented BNFC'NoPosition $ show x
@@ -161,6 +194,30 @@ filterFuns = foldr f [] where
     f (FunDefTop _ fundef) acc = fundef : acc
     f _ acc = acc
 
+filterClasses :: [TopDefC] -> [ClsDefC]
+filterClasses = foldr f [] where
+    f :: TopDefC -> [ClsDefC] -> [ClsDefC]
+    f (ClsDefTop _ clsdef) acc = clsdef : acc
+    f _ acc = acc
+
+getMemberType :: ClsMemDeclC -> [(Ident, Type)]
+getMemberType (ClsMthdDecl _ (FunDef _ retType ident args _)) = [(ident, TFun BNFC'NoPosition retType (map getArgType args))]
+getMemberType (ClsAttrDecl _ t items) = map (\(AttrItem _ ident) -> (ident, t)) items
+
+getClassEnv :: ClsDefC -> (Ident, Maybe Ident, TypeEnv)
+getClassEnv (ClsDef _ ident clsMembers) = (ident, Nothing, Map.fromList (concatMap getMemberType clsMembers))
+getClassEnv (ClsDefExt _ ident identExt clsMembers) = (ident, Just identExt, Map.fromList (concatMap getMemberType clsMembers))
+
+assignClasses :: [(Ident, Maybe Ident, TypeEnv)] -> CheckEnv -> CheckEnv
+assignClasses = flip $ foldr (\(ident, identExt, classEnv) env -> env { classes = Map.insert ident (identExt, classEnv) (classes env) })
+
+addFunctionDeclarations :: [TopDefC] -> CheckEnv -> CheckEnv
+addFunctionDeclarations topDefs = assignTypes (map (\(FunDef pos retType ident args _) -> (ident, TFun pos retType (map (\(Arg _ t _) -> t) args))) (filterFuns topDefs))
+
+addClassDeclarations :: [TopDefC] -> CheckEnv -> CheckEnv
+addClassDeclarations topDefs = assignClasses (map getClassEnv (filterClasses topDefs))
+
+
 instance Checkable ProgramC where
     -- take into account that function can be defined after it is used
     check (Program _ topDefs) = do
@@ -169,7 +226,7 @@ instance Checkable ProgramC where
         let funs = filterFuns topDefs
         let funNamesPositions = map (\(FunDef pos _ ident _ _) -> (ident, pos)) funs
         -- add symbols already defined in env to funNamesPositiosn
-        let envNames = Map.keys $ typeEnv env
+        -- let envNames = Map.keys $ typeEnv env
 
         foldM_ (\localNames namePosition -> do
             let (name, pos) = namePosition
@@ -182,14 +239,14 @@ instance Checkable ProgramC where
                     return $ Data.insert name localNames
             ) (Data.empty :: Data.Set Ident) funNamesPositions
 
-
-        let env' = assignTypes (map (\(FunDef pos retType ident args _) -> (ident, TFun pos retType (map (\(Arg _ t _) -> t) args))) (filterFuns topDefs)) env
+        let env'' = addFunctionDeclarations topDefs env
+        let env' = assignClasses (map getClassEnv (filterClasses topDefs)) env''
         foldM_ (\env' topDef -> local (const env') (check topDef)) env' topDefs
         -- ensure no __internal_concat function is defined
         case Map.lookup (Ident "__internal_concat") (typeEnv env') of
             Just (TFun pos _ _) -> throwError $ RedeclarationOfBuiltIn (Ident "__internal_concat") pos
             _ -> return env'
-        
+
         -- check main type
         case Map.lookup (Ident "main") (typeEnv env') of
             Nothing -> throwError $ NoEntryPoint BNFC'NoPosition
@@ -198,7 +255,6 @@ instance Checkable ProgramC where
                 Control.Monad.when (args /= []) $ throwError $ InvalidMain pos
                 return env'
             _ -> throwError $ UnknownIdentifier BNFC'NoPosition (Ident "main")
-
 
 instance Checkable BlockC where
     check (Block _ stmts) = do
@@ -214,8 +270,6 @@ instance Checkable BlockC where
             else
                 return $ Data.insert name localNames
             ) (Data.empty :: Data.Set Ident) declNamesPositions
-
-
         env <- ask
         foldM (\env' stmt -> local (const env') (check stmt)) env stmts
 
@@ -236,9 +290,32 @@ hasReturn (Block _ stmts) = any isReturn stmts
         isReturn (SFor _ _ _ _ stmt) = isReturn stmt
         isReturn _ = False
 
-
 instance Checkable ClsMemDeclC where
-    check = notImplemented
+    check (ClsMthdDecl _ (FunDef _ retType ident args block)) = do
+        env <- ask
+        -- if any argument has void type, reject
+        foldM_ (\_ (Arg _ t _) -> Control.Monad.when (t == TVoid BNFC'NoPosition) $ throwError $ TypeMismatch "Parameter cannot have void type!" BNFC'NoPosition t (TVoid BNFC'NoPosition)) () args
+
+        argNames <- mapM (\(Arg _ _ ident) -> return ident) args
+        Control.Monad.when (nub argNames /= argNames) $ throwError $ DuplicatedParameterNames BNFC'NoPosition
+        let funType = TFun BNFC'NoPosition retType (map (\(Arg _ t _) -> t) args)
+        let env' = assignType ident funType env
+        -- set return type
+        local (const env' {retType = Just retType}) (check block)
+
+        case retType of
+            TVoid _ -> return env'
+            _ -> if hasReturn block then return env' else throwError $ NoReturn BNFC'NoPosition
+
+    check (ClsAttrDecl _ t items) = do
+        env <- ask
+        -- if any argument has void type, reject
+        Control.Monad.when (t == TVoid BNFC'NoPosition) $ throwError $ TypeMismatch "Attribute cannot have void type!" BNFC'NoPosition t (TVoid BNFC'NoPosition)
+
+        attrNames <- mapM (\(AttrItem _ ident) -> return ident) items
+        Control.Monad.when (nub attrNames /= attrNames) $ throwError $ DuplicatedParameterNames BNFC'NoPosition
+        let env' = assignTypes (map (\(AttrItem _ ident) -> (ident, t)) items) env
+        return env'
 
 instance Checkable TopDefC where
     check (FunDefTop _ (FunDef pos retType ident args block)) = do
@@ -266,15 +343,18 @@ instance Checkable TopDefC where
     check (ClsDefTop pos (ClsDef _ ident clsMembers)) = do
         env <- ask
         -- if class exists in the environment, reject
-        Control.Monad.when (Map.member ident (typeEnv env)) $ throwError $ RepeatedSDeclaration pos
-        let env' = assignType ident (TCls pos ident) env
-        foldM (\env' clsMember -> local (const env') (check clsMember)) env' clsMembers
+        -- Control.Monad.when (Map.member ident (typeEnv env)) $ throwError $ RepeatedSDeclaration pos
+        -- Control.Monad.when (Map.member ident (classes env)) $ throwError $ RepeatedSDeclaration pos
+        -- let env' = assignType ident (TCls pos ident) env
+        -- let env' = assignTypes (map (\(FunDef pos retType ident args _) -> (ident, TFun pos retType (map (\(Arg _ t _) -> t) args))) (filterFuns topDefs)) env
+        -- let env'' = foldM (\env' clsMember -> local (const env') (check clsMember)) env' clsMembers
+        foldM (\env' clsMember -> local (const env') (check clsMember)) env clsMembers
 
     -- unverified
     check (ClsDefTop pos (ClsDefExt _ ident identExt clsMembers)) = do
         env <- ask
         -- if class exists in the environment, reject
-        Control.Monad.when (Map.member ident (typeEnv env)) $ throwError $ RepeatedSDeclaration pos
+        -- Control.Monad.when (Map.member ident (typeEnv env)) $ throwError $ RepeatedSDeclaration pos
         let env' = assignType ident (TCls pos identExt) env
         foldM (\env' clsMember -> local (const env') (check clsMember)) env' clsMembers
 
@@ -392,28 +472,48 @@ instance Checkable Stmt where
             _ -> throwError $ TypeMismatch "Invalid while condition type" pos t (TBool BNFC'NoPosition)
     check e = notImplemented e
 
+checkFunctionApplication :: BNFC'Position -> Type -> [Type] -> [Expr] -> IM CheckEnv
+checkFunctionApplication pos retType argTypes exprs = do
+    Control.Monad.when (length exprs /= length argTypes) $ throwError $ WrongNumberOfArguments pos
+    exprTypes <- mapM inspect exprs
+    if exprTypes /= argTypes then
+        let foo = firstNotMatching exprTypes argTypes in
+        throwError $ uncurry (TypeMismatch "Invalid argument types" pos) foo
+    else
+        ask
+    where
+        firstNotMatching (x:xs) (y:ys) = if x == y then firstNotMatching xs ys else (x, y)
+        firstNotMatching _ _ = undefined
+
 instance Checkable Expr where
     check (EApp pos ident exprs) = do
         env <- ask
         t <- getType pos ident
         case t of
             TFun pos2 retType argTypes -> do
-                Control.Monad.when (length exprs /= length argTypes) $ throwError $ WrongNumberOfArguments pos
-                exprTypes <- mapM inspect exprs
-                let argRawTypes = argTypes
-                let exprLValue = map (\case { _ -> False }) exprs
-                let argRef = map (\case { _ -> False }) argTypes
-                if exprTypes /= argRawTypes then
-                    let foo = firstNotMatching exprTypes argRawTypes in
-                    throwError $ uncurry (TypeMismatch "Invalid argument types" pos) foo
-                else if any (\(refNeeded, isLVal) -> refNeeded && not isLVal) $ zip argRef exprLValue then
-                    throwError $ NotAnLValue pos
-                else
-                    ask
+                checkFunctionApplication pos retType argTypes exprs
             _ -> throwError $ NotAFunction pos
-        where
-            firstNotMatching (x:xs) (y:ys) = if x == y then firstNotMatching xs ys else (x, y)
-            firstNotMatching _ _ = undefined
+    -- check (EApp pos ident exprs) = do
+    --     env <- ask
+    --     t <- getType pos ident
+    --     case t of
+    --         TFun pos2 retType argTypes -> do
+    --             Control.Monad.when (length exprs /= length argTypes) $ throwError $ WrongNumberOfArguments pos
+    --             exprTypes <- mapM inspect exprs
+    --             let argRawTypes = argTypes
+    --             let exprLValue = map (\case { _ -> False }) exprs
+    --             let argRef = map (\case { _ -> False }) argTypes
+    --             if exprTypes /= argRawTypes then
+    --                 let foo = firstNotMatching exprTypes argRawTypes in
+    --                 throwError $ uncurry (TypeMismatch "Invalid argument types" pos) foo
+    --             else if any (\(refNeeded, isLVal) -> refNeeded && not isLVal) $ zip argRef exprLValue then
+    --                 throwError $ NotAnLValue pos
+    --             else
+    --                 ask
+    --         _ -> throwError $ NotAFunction pos
+    --     where
+    --         firstNotMatching (x:xs) (y:ys) = if x == y then firstNotMatching xs ys else (x, y)
+    --         firstNotMatching _ _ = undefined
 
     check (ELVal pos (LVar _ ident)) = do
         getType pos ident
@@ -478,7 +578,7 @@ instance Checkable Expr where
                 TInt _ -> ask
                 _ -> throwError $ TypeMismatch "Cannot multiply an int by a non-int!" pos t1 t2
             _ -> throwError $ TypeMismatch "* operator only supported for ints!" pos t1 t2
-    
+
     check (ELitInt _ _) = ask
     check (EString _ _) = ask
     check (ELitTrue _) = ask
@@ -517,8 +617,23 @@ instance Checkable Expr where
             TInt _ -> ask
             _ -> throwError $ TypeMismatch "Array size not an int!" pos t' (TInt BNFC'NoPosition)
     check (ENew pos ident) = do
-        getType pos ident
         ask
+
+    check (EMethodApply pos expr ident exprs) = do
+        env <- ask
+        t <- inspect expr
+        case t of
+            TCls _ clsname -> do
+                let classes' = classes env
+                case Map.lookup clsname classes' of
+                    Just (base, classEnv) -> do
+                        case Map.lookup ident classEnv of
+                            Just (TFun pos2 retType argTypes) -> do
+                                checkFunctionApplication pos retType argTypes exprs
+                            Nothing -> throwError $ NoSuchAttribute pos ident
+                    Nothing -> throwError $ UnknownIdentifier pos ident
+            _ -> throwError $ TypeMismatch "Not a class!" pos t (TCls BNFC'NoPosition ident)
+
     check e = notImplemented e
 
 initEnv = CheckEnv {
@@ -530,7 +645,8 @@ initEnv = CheckEnv {
         (Ident "error", TFun BNFC'NoPosition (TVoid BNFC'NoPosition) [])
     ],
     retType = Nothing,
-    inLoop = False
+    inLoop = False,
+    classes = Map.empty
 }
 
 typeCheck_ :: ProgramC -> Except Exc CheckEnv
@@ -538,7 +654,7 @@ typeCheck_ p = do
     case runIdentity $ runExceptT $ runReaderT (check p) initEnv of
         Left err -> throw err
         Right env -> return env
-        
+
 
 typeCheck :: ProgramC -> IO ()
 typeCheck p = do
