@@ -1,4 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use newtype instead of data" #-}
+{-# LANGUAGE GADTs #-}
 module BackendLLVM ( emitLLVM ) where
 
 import Latte.Abs
@@ -21,6 +24,21 @@ import Data.Char(ord)
 import Numeric(showHex)
 import Text.ParserCombinators.ReadP (char)
 
+newtype Label = Label Integer
+    deriving (Eq)
+
+newtype VarName = VarName Integer 
+    deriving (Eq)
+
+newtype Var = Var (VarName, PrimitiveType)
+    deriving (Eq)
+
+-- name of type mapping variable 
+-- newtype 
+
+data BasicBlock =
+    BasicBlock Label (Map Var (Map Label Value)) (Data.Sequence.Seq String)
+    deriving (Eq)
 
 data PrimitiveType =
     VoidType
@@ -91,7 +109,9 @@ data St = St {
     strings :: Map String Integer,
     currentLoc :: Integer,
     currentLabel :: Integer,
-    localVars :: Map Ident Value
+    localVars :: Map Ident Value,
+    currentBasicBlock :: BasicBlock,
+    basicBlocks :: Map Label BasicBlock
 }
 initState :: St
 initState = St {
@@ -199,7 +219,7 @@ instance Compilable (Type' BNFC'Position) where
 instance Compilable (ArgC' BNFC'Position) where
     compile (Arg _ typ (Ident name)) = do
         llvmType <- concat . toList <$> compile typ
-        return $ singleton $ llvmType ++ " %" ++ name
+        return $ singleton $ llvmType ++ " %" ++ name   
 
 instance Compilable FunDefC where
     compile (FunDef _ retType_ (Ident name) args block@(Block _ stmts)) = do
@@ -527,8 +547,8 @@ compileExpr (EAnd _ expr1 _ expr2) = do
         singleton (show returnReg ++ " = phi i1 [ false, " ++ labelStart ++ " ], [ " ++ show val2 ++ ", " ++ labelCheckSecondEnd ++ " ]\n")
         , returnReg)
 
-compileExpr (ENewArr _ type_ expr) = error "not implemented"
-compileExpr (ENew _ type_) = error "not implemented"
+compileExpr (ENewArr _ type_ expr) = pure (singleton "", Register 0 (PointerType I8Type))
+compileExpr (ENew _ type_) = pure (singleton "", Register 0 (PointerType I8Type))
 
 getVarValue :: Ident -> IM Value
 getVarValue ident = do
@@ -546,5 +566,5 @@ compileLVal (LVar _ (Ident ident)) = do
     env <- ask
     varValue <- getVarValue (Ident ident)
     return (singleton "", varValue)
-compileLVal (LArrAcc _ expr1 expr2) = error "not implemented"
-compileLVal (LAttrAcc _ expr (Ident ident)) = error "not implemented"
+compileLVal (LArrAcc _ expr1 expr2) = pure (singleton "", Register 0 (PointerType I8Type))
+compileLVal (LAttrAcc _ expr (Ident ident)) = pure (singleton "", Register 0 (PointerType I8Type))

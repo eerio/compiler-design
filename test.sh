@@ -4,7 +4,7 @@ RT=mrjp-tests
 RT2=lattests
 BIN=./latc
 
-for filename in $(find "$RT2"/opt "$RT2"/extensions/objects1 "$RT2"/extensions/objects2 "$RT2"/extensions/struct "$RT2"/extensions/shapes.lat -name "*.lat"); do
+for filename in $(find "$RT2"/opt "$RT2"/extensions/objects1 "$RT2"/extensions/objects2 "$RT2"/extensions/struct "$RT2"/extensions/shapes.lat varqox/mrjp-tests/good -name "*.lat"); do
   [ -e "$filename" ] || continue
   # create temporary files for examination and a pair of fds for each of them
   # that's because we want to read these files and bash doesn't provide a way

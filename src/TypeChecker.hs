@@ -33,7 +33,8 @@ data CheckEnv = CheckEnv {
     typeEnv :: !TypeEnv,
     retType :: !(Maybe Type),
     inLoop :: !Bool,
-    classes :: !(Map Ident (Maybe Ident, TypeEnv))
+    classes :: !(Map Ident (Maybe Ident, TypeEnv)),
+    clsName :: !(Maybe Ident)
 }
 
 modifyEnv :: (TypeEnv -> TypeEnv) -> CheckEnv -> CheckEnv
@@ -45,8 +46,8 @@ assignType ident t = modifyEnv (Map.insert ident t)
 assignTypes :: [(Ident, Type)] -> CheckEnv -> CheckEnv
 assignTypes = flip $ foldr (uncurry assignType)
 
-getArgType :: ArgC -> Type
-getArgType (Arg _ t _) = t
+-- getArgType :: ArgC -> Type
+-- getArgType (Arg _ t _) = t
 
 type Exc = Exc' BNFC'Position
 data Exc' a
@@ -112,7 +113,12 @@ evalMaybe _ (Just a) = pure a
 getType :: BNFC'Position -> Ident -> IM Type
 getType pos ident = do
     env <- ask
-    evalMaybe (UnknownIdentifier pos ident) (Map.lookup ident (typeEnv env))
+    case Map.lookup ident (typeEnv env) of
+        Just t -> return t
+        Nothing -> do
+            case clsName env of
+                Just clsname -> getMember clsname ident
+                Nothing -> throwError $ UnknownIdentifier pos ident
 
 class Inspectable a where
     inspect :: a -> IM Type
@@ -125,7 +131,12 @@ instance Inspectable Expr where
     inspect (ERel pos lhs _ rhs) = return $ TBool pos
     inspect (ELVal pos (LVar _ ident)) = getType pos ident
     inspect (ELVal pos (LArrAcc _ expr_arr expr_ind)) = notImplemented "array access"
-    inspect (ELVal pos (LAttrAcc _ expr ident)) = notImplemented "attribute access"
+    inspect (ELVal pos (LAttrAcc _ expr ident)) = do
+        t <- inspect expr
+        case t of
+            TCls _ clsname -> do
+                getMember clsname ident
+            _ -> throwError $ TypeMismatch "Not a class!" pos t (TCls BNFC'NoPosition ident)
     inspect (EAdd pos lhs _ rhs) = inspect lhs
     inspect (EMul pos lhs _ rhs) = return $ TInt pos
     inspect (ENeg pos expr) = return $ TInt pos
@@ -176,8 +187,8 @@ instance {-# OVERLAPPING #-} Eq Type where
     TBool _ == TBool _ = True
     TVoid _ == TVoid _ = True
     TFun _ retType1 argTypes1 == TFun _ retType2 argTypes2 = retType1 == retType2 && argTypes1 == argTypes2
-    TArr _ t1 == TArr _ t2 = t1 == t2
-    TCls _ ident1 == TCls _ ident2 = ident1 == ident2 -- todo: fix this for inheritance
+    TArr _ t1 == TArr _ t2 = t1 == t2 -- todo: this is incorrect
+    TCls _ ident1 == TCls _ ident2 = ident1 == ident2
     _ == _ = False
 
 instance {-# OVERLAPPING #-} Eq ArgC where
@@ -200,13 +211,16 @@ filterClasses = foldr f [] where
     f (ClsDefTop _ clsdef) acc = clsdef : acc
     f _ acc = acc
 
+getArgType :: ArgC -> Type
+getArgType (Arg _ t _) = t
+
 getMemberType :: ClsMemDeclC -> [(Ident, Type)]
 getMemberType (ClsMthdDecl _ (FunDef _ retType ident args _)) = [(ident, TFun BNFC'NoPosition retType (map getArgType args))]
 getMemberType (ClsAttrDecl _ t items) = map (\(AttrItem _ ident) -> (ident, t)) items
 
 getClassEnv :: ClsDefC -> (Ident, Maybe Ident, TypeEnv)
-getClassEnv (ClsDef _ ident clsMembers) = (ident, Nothing, Map.fromList (concatMap getMemberType clsMembers))
-getClassEnv (ClsDefExt _ ident identExt clsMembers) = (ident, Just identExt, Map.fromList (concatMap getMemberType clsMembers))
+getClassEnv (ClsDef _ ident clsMembers) = (ident, Nothing, Map.fromList ((Ident "self", TCls BNFC'NoPosition ident) : concatMap getMemberType clsMembers))
+getClassEnv (ClsDefExt _ ident identExt clsMembers) = (ident, Just identExt, Map.fromList ((Ident "self", TCls BNFC'NoPosition ident) : concatMap getMemberType clsMembers))
 
 assignClasses :: [(Ident, Maybe Ident, TypeEnv)] -> CheckEnv -> CheckEnv
 assignClasses = flip $ foldr (\(ident, identExt, classEnv) env -> env { classes = Map.insert ident (identExt, classEnv) (classes env) })
@@ -291,21 +305,7 @@ hasReturn (Block _ stmts) = any isReturn stmts
         isReturn _ = False
 
 instance Checkable ClsMemDeclC where
-    check (ClsMthdDecl _ (FunDef _ retType ident args block)) = do
-        env <- ask
-        -- if any argument has void type, reject
-        foldM_ (\_ (Arg _ t _) -> Control.Monad.when (t == TVoid BNFC'NoPosition) $ throwError $ TypeMismatch "Parameter cannot have void type!" BNFC'NoPosition t (TVoid BNFC'NoPosition)) () args
-
-        argNames <- mapM (\(Arg _ _ ident) -> return ident) args
-        Control.Monad.when (nub argNames /= argNames) $ throwError $ DuplicatedParameterNames BNFC'NoPosition
-        let funType = TFun BNFC'NoPosition retType (map (\(Arg _ t _) -> t) args)
-        let env' = assignType ident funType env
-        -- set return type
-        local (const env' {retType = Just retType}) (check block)
-
-        case retType of
-            TVoid _ -> return env'
-            _ -> if hasReturn block then return env' else throwError $ NoReturn BNFC'NoPosition
+    check (ClsMthdDecl _ fun) = check fun
 
     check (ClsAttrDecl _ t items) = do
         env <- ask
@@ -317,8 +317,8 @@ instance Checkable ClsMemDeclC where
         let env' = assignTypes (map (\(AttrItem _ ident) -> (ident, t)) items) env
         return env'
 
-instance Checkable TopDefC where
-    check (FunDefTop _ (FunDef pos retType ident args block)) = do
+instance Checkable FunDefC where
+    check (FunDef pos retType ident args block) = do
         env <- ask
         -- if any argument has void type, reject
         foldM_ (\_ (Arg _ t _) -> Control.Monad.when (t == TVoid BNFC'NoPosition) $ throwError $ TypeMismatch "Parameter cannot have void type!" pos t (TVoid BNFC'NoPosition)) () args
@@ -334,42 +334,99 @@ instance Checkable TopDefC where
             _ -> if hasReturn block then return env' else throwError $ NoReturn pos
 
         where
+            getArgType :: ArgC -> Type
+            getArgType (Arg _ t _) = t
+
             bindArgs :: [ArgC] -> CheckEnv -> CheckEnv
             bindArgs args = assignTypes $ map (\arg -> (getIdent arg, getArgType arg)) args
+
             getIdent :: ArgC -> Ident
             getIdent (Arg _ _ ident) = ident
 
-    -- unverified
-    check (ClsDefTop pos (ClsDef _ ident clsMembers)) = do
-        env <- ask
-        -- if class exists in the environment, reject
-        -- Control.Monad.when (Map.member ident (typeEnv env)) $ throwError $ RepeatedSDeclaration pos
-        -- Control.Monad.when (Map.member ident (classes env)) $ throwError $ RepeatedSDeclaration pos
-        -- let env' = assignType ident (TCls pos ident) env
-        -- let env' = assignTypes (map (\(FunDef pos retType ident args _) -> (ident, TFun pos retType (map (\(Arg _ t _) -> t) args))) (filterFuns topDefs)) env
-        -- let env'' = foldM (\env' clsMember -> local (const env') (check clsMember)) env' clsMembers
-        foldM (\env' clsMember -> local (const env') (check clsMember)) env clsMembers
+defineClass :: BNFC'Position -> Ident -> Maybe Ident -> [ClsMemDeclC] -> IM CheckEnv
+defineClass pos ident identExt clsMembers = do
+    envRaw <- ask
+    -- first, check and define attributes
+    let attrs = filter (\case { ClsAttrDecl {} -> True ; _ -> False }) clsMembers
+    envAttr <- foldM (\env' clsMember -> local (const env') (check clsMember)) envRaw attrs
+    -- insert self
+    let env' = envAttr { typeEnv = Map.insert (Ident "self") (TCls BNFC'NoPosition ident) (typeEnv envAttr) }
 
-    -- unverified
-    check (ClsDefTop pos (ClsDefExt _ ident identExt clsMembers)) = do
-        env <- ask
-        -- if class exists in the environment, reject
-        -- Control.Monad.when (Map.member ident (typeEnv env)) $ throwError $ RepeatedSDeclaration pos
-        let env' = assignType ident (TCls pos identExt) env
-        foldM (\env' clsMember -> local (const env') (check clsMember)) env' clsMembers
+    -- check the methods
+    let methods = filter (\case { ClsMthdDecl {} -> True ; _ -> False }) clsMembers
+    foldM_ (\env' clsMember -> local (const env') (check clsMember)) env' methods
+    let classEnv = Map.fromList $ concatMap getMemberType clsMembers
+    return $ env' { classes = Map.insert ident (identExt, classEnv) (classes env') }
+
+    -- (ident, baseCls, classEnv) <- do
+    --     case identExt of
+    --         Just identExt' -> return $ getClassEnv (ClsDefExt pos ident identExt' clsMembers)
+    --         Nothing -> return $ getClassEnv (ClsDef pos ident clsMembers)
+    -- let env' = assignClasses [(ident, identExt, classEnv)] env
+    -- foldM (\env' clsMember -> local (const env') (check clsMember)) env' clsMembers
+
+instance Checkable TopDefC where
+    check (FunDefTop _ fun) = check fun
+
+    check (ClsDefTop pos (ClsDef _ ident clsMembers)) = defineClass pos ident Nothing clsMembers
+        -- -- first, check attributes
+        -- let attrs = filter (\case { ClsAttrDecl {} -> True ; _ -> False }) clsMembers
+        -- env <- ask
+        -- foldM_ (\env' clsMember -> local (const env') (check clsMember)) env attrs
+        -- -- get the full class environment
+        -- let (_, _, typeEnv) = getClassEnv (ClsDef pos ident clsMembers)
+        -- let checkEnv = assignClasses [(ident, Nothing, typeEnv)] env
+        -- -- check every method in the full environment
+        -- mapM_ (\(ClsMthdDecl _ fun) -> local (const checkEnv) (check fun)) $ filter (\case { ClsMthdDecl {} -> True ; _ -> False }) clsMembers
+        -- return checkEnv
+
+    check (ClsDefTop pos (ClsDefExt _ ident identExt clsMembers)) = defineClass pos ident (Just identExt) clsMembers
+        -- -- first, check attributes
+        -- let attrs = filter (\case { ClsAttrDecl {} -> True ; _ -> False }) clsMembers
+        -- env <- ask
+        -- foldM_ (\env' clsMember -> local (const env') (check clsMember)) env attrs
+        -- -- get the full class environment
+        -- let (_, _, typeEnv) = getClassEnv (ClsDefExt pos ident identExt clsMembers)
+        -- let checkEnv = assignClasses [(ident, Just identExt, typeEnv)] env
+        -- -- check every method in the full environment
+        -- mapM_ (\(ClsMthdDecl _ fun) -> local (const checkEnv) (check fun)) $ filter (\case { ClsMthdDecl {} -> True ; _ -> False }) clsMembers
+        -- return checkEnv
 
 instance Checkable LVal where
     check (LVar pos ident) = do
         env <- ask
-        evalMaybe (UnknownIdentifier pos ident) (Map.lookup ident (typeEnv env))
+        getType pos ident
+        -- evalMaybe (UnknownIdentifier pos ident) (Map.lookup ident (typeEnv env))
         return env
     check (LArrAcc pos exprarr expr) = do
         check exprarr
         check expr
     check (LAttrAcc pos expr ident) = do
         env <- ask
-        check expr
-        return env
+        t <- inspect expr
+        case t of
+            TCls _ clsname -> do
+                mem <- getMember clsname ident
+                return env
+                -- let classes' = classes env
+                -- case Map.lookup clsname classes' of
+                --     Just (baseCls, classEnv) -> do
+                --         case Map.lookup ident classEnv of
+                --             Just t -> return env
+                --             Nothing -> throwError $ NoSuchAttribute pos ident
+                --     Nothing -> throwError $ UnknownIdentifier pos ident
+            _ -> throwError $ TypeMismatch "Not a class!" pos t (TCls BNFC'NoPosition ident)
+
+isInstance :: Type -> Type -> IM Bool
+isInstance (TCls _ ident1) (TCls _ ident2) = do
+    if ident1 == ident2 then return True else do
+        env <- ask
+        let classes' = classes env
+        case Map.lookup ident1 classes' of
+            Just (Just identExt, _) -> isInstance (TCls BNFC'NoPosition identExt) (TCls BNFC'NoPosition ident2)
+            Just (_, classEnv) -> return False
+            Nothing -> return False
+isInstance t1 t2 = return $ t1 == t2
 
 instance Checkable Stmt where
     check (SEmpty _) = ask
@@ -418,7 +475,8 @@ instance Checkable Stmt where
             env <- ask
             check expr
             t' <- inspect expr
-            if t == t' then return $ assignType ident t env else throwError $ TypeMismatch "Right-hand side type doesn't match declaration type!" pos t t'
+            isInst <- isInstance t' t
+            if isInst then return $ assignType ident t env else throwError $ TypeMismatch "Right-hand side type doesn't match declaration type!" pos t t'
 
         check_item (DeclNoInit _ ident) = asks $ assignType ident t
 
@@ -440,7 +498,8 @@ instance Checkable Stmt where
         t1 <- getType pos2 ident
         check expr
         t2 <- inspect expr
-        if t1 == t2 then ask else throwError $ TypeMismatch "Right-hand side type doesn't match assignment target type!" pos t1 t2
+        isInst <- isInstance t2 t1
+        if isInst then ask else throwError $ TypeMismatch "Right-hand side type doesn't match assignment target type!" pos t1 t2
 
     check (SAss pos (LArrAcc pos2 expr_arr expr_ind) expr) = do
         check expr_arr
@@ -462,7 +521,14 @@ instance Checkable Stmt where
         t2 <- inspect expr_assigned
         case t1 of
             TArr _ _ -> throwError $ TypeMismatch "Arrays have no attributes" pos t1 (TCls BNFC'NoPosition ident)
-            _ -> throwError $ TypeMismatch "Invalid attribute access" pos t1 (TCls BNFC'NoPosition ident)
+            TCls _ clsname -> do
+                memb <- getMember clsname ident
+                case memb of
+                    TFun pos2 retType argTypes -> throwError $ TypeMismatch "Cannot assign to a function!" pos t1 (TFun pos2 retType argTypes)
+                    _ -> do
+                        isInst <- isInstance t2 memb
+                        if isInst then ask else throwError $ TypeMismatch "RHS value type doesn't match attribute type!" pos memb t2
+            _ -> throwError $ TypeMismatch "Not a class!" pos t1 (TCls pos ident)
 
     check (SWhile pos expr block) = do
         check expr
@@ -534,7 +600,7 @@ instance Checkable Expr where
         case t of
             TCls _ ident -> ask
             TArr _ _ -> if ident == Ident "length" then ask else throwError $ TypeMismatch "Arrays have no attributes" pos t (TCls BNFC'NoPosition ident)
-            _ -> throwError $ TypeMismatch "Invalid attribute access" pos t (TCls BNFC'NoPosition ident)
+            _ -> throwError $ TypeMismatch "(todo) Invalid attribute access" pos t (TCls BNFC'NoPosition ident)
 
     check (ERel pos expr1 op expr2) = do
         t1 <- inspect expr1
@@ -624,17 +690,33 @@ instance Checkable Expr where
         t <- inspect expr
         case t of
             TCls _ clsname -> do
-                let classes' = classes env
-                case Map.lookup clsname classes' of
-                    Just (base, classEnv) -> do
-                        case Map.lookup ident classEnv of
-                            Just (TFun pos2 retType argTypes) -> do
-                                checkFunctionApplication pos retType argTypes exprs
-                            Nothing -> throwError $ NoSuchAttribute pos ident
-                    Nothing -> throwError $ UnknownIdentifier pos ident
+                memb <- getMember clsname ident
+                case memb of
+                    TFun pos2 retType argTypes -> do
+                        checkFunctionApplication pos retType argTypes exprs
             _ -> throwError $ TypeMismatch "Not a class!" pos t (TCls BNFC'NoPosition ident)
+    
+    check (ECast pos ident toknull) = do
+        env <- ask
+        classes' <- asks classes
+        case Map.lookup ident classes' of
+            Just classEnv -> return env
+            Nothing -> throwError $ TypeMismatch "Not a class!" pos (TCls BNFC'NoPosition ident) (TCls BNFC'NoPosition ident)
 
-    check e = notImplemented e
+getMember :: Ident -> Ident -> IM Type
+getMember clsname ident = do
+    env <- ask
+    let classes' = classes env
+    case Map.lookup clsname classes' of
+        Just (Just base, classEnv) -> do
+            case Map.lookup ident classEnv of
+                Just t -> return t
+                Nothing -> getMember base ident
+        Just (_, classEnv) -> do
+            case Map.lookup ident classEnv of
+                Just t -> return t
+                Nothing -> throwError $ NoSuchAttribute BNFC'NoPosition ident
+        _ -> throwError $ UnknownIdentifier BNFC'NoPosition ident
 
 initEnv = CheckEnv {
     typeEnv = Map.fromList [
@@ -646,7 +728,8 @@ initEnv = CheckEnv {
     ],
     retType = Nothing,
     inLoop = False,
-    classes = Map.empty
+    classes = Map.empty,
+    clsName = Nothing
 }
 
 typeCheck_ :: ProgramC -> Except Exc CheckEnv
