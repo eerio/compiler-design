@@ -4,8 +4,10 @@ RT=mrjp-tests
 RT2=lattests
 BIN=./latc
 
+# important: https://stackoverflow.com/a/47091972/3622836
+
 # nie zawsze chcemy to wykonywac przez flakiness! "varqox/mrjp-tests/bad"
-for filename in $(find "varqox/mrjp-tests/bad" "$RT2"/bad "$RT/bad/semantic" ! -path "$RT/weird_bad" -name "*.lat"); do
+for filename in $(find "$RT2"/bad "$RT/bad/semantic" ! -path "$RT/weird_bad" -name "*.lat"); do
   [ -e "$filename" ] || continue
   # create temporary files for examination and a pair of fds for each of them
   # that's because we want to read these files and bash doesn't provide a way
