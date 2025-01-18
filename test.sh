@@ -4,6 +4,49 @@ RT=mrjp-tests
 RT2=lattests
 BIN=./latc
 
+# nie zawsze chcemy to wykonywac przez flakiness! "varqox/mrjp-tests/bad"
+for filename in $(find "varqox/mrjp-tests/bad" "$RT2"/bad "$RT/bad/semantic" ! -path "$RT/weird_bad" -name "*.lat"); do
+  [ -e "$filename" ] || continue
+  # create temporary files for examination and a pair of fds for each of them
+  # that's because we want to read these files and bash doesn't provide a way
+  # to seek in file, so after a write we are unable to go back if we only create
+  # one fd
+  temp_out=$(mktemp)
+  temp_err=$(mktemp)
+  exec {fd_outw}>"$temp_out"
+  exec {fd_outr}<"$temp_out"
+  exec {fd_outr2}<"$temp_out"
+  exec {fd_errw}>"$temp_err"
+  exec {fd_errr}<"$temp_err"
+  exec {fd_errr2}<"$temp_err"
+  rm "$temp_out"
+  rm "$temp_err"
+
+  echo -n "$filename"
+
+  # execute, save stdout and stderr to temp files for verification
+  $BIN \
+      "$filename" \
+      1> >(cat - >&${fd_outw}) \
+      2> >(cat - >&${fd_errw})
+  
+  # check exit code
+  if [ $? -ne 0 ] && [ "`head -n 1 <&${fd_errr}`" = "ERROR" ]; then
+    echo ": correct"
+  else
+    echo ": failed!"
+    cat <&${fd_errr2}
+    cat <&${fd_outr}
+    exit
+  fi
+
+  exec {fd_outw}>&-
+  exec {fd_outr}<&-
+  exec {fd_outr2}<&-
+  exec {fd_errw}>&-
+  exec {fd_errr}<&-
+  exec {fd_errr2}<&-
+done
 # varqox/mrjp-tests/good
 for filename in $(find lattests mrjp-tests varqox/mrjp-tests ! -path "varqox/mrjp-tests/good_weird/*" ! -path "varqox/mrjp-tests/bad/*" ! -path "mrjp-tests/bad/*" ! -path "mrjp-tests/weird_bad/*" ! -path "mrjp-tests/weird_good/*" ! -path "lattests/bad/*" -name '*.lat'); do
   [ -e "$filename" ] || continue
@@ -121,46 +164,6 @@ for filename in $(find "$RT2"/good/ "$RT"/good/basic ! -path "$RT/good/virtual/*
   exec {fd_exec_outr2}<&-
 done
 
-for filename in $(find "$RT2"/bad "$RT/bad/semantic" ! -path "$RT/weird_bad" -name "*.lat"); do
-  [ -e "$filename" ] || continue
-  # create temporary files for examination and a pair of fds for each of them
-  # that's because we want to read these files and bash doesn't provide a way
-  # to seek in file, so after a write we are unable to go back if we only create
-  # one fd
-  temp_out=$(mktemp)
-  temp_err=$(mktemp)
-  exec {fd_outw}>"$temp_out"
-  exec {fd_outr}<"$temp_out"
-  exec {fd_outr2}<"$temp_out"
-  exec {fd_errw}>"$temp_err"
-  exec {fd_errr}<"$temp_err"
-  exec {fd_errr2}<"$temp_err"
-  rm "$temp_out"
-  rm "$temp_err"
-
-  # execute, save stdout and stderr to temp files for verification
-  $BIN \
-      "$filename" \
-      1> >(cat - >&${fd_outw}) \
-      2> >(cat - >&${fd_errw})
-  
-  # check exit code
-  if [ $? -ne 0 ] && [ "`head -n 1 <&${fd_errr}`" = "ERROR" ]; then
-    echo "$filename: correct"
-  else
-    echo "$filename: failed!"
-    cat <&${fd_errr2}
-    cat <&${fd_outr}
-    exit
-  fi
-
-  exec {fd_outw}>&-
-  exec {fd_outr}<&-
-  exec {fd_outr2}<&-
-  exec {fd_errw}>&-
-  exec {fd_errr}<&-
-  exec {fd_errr2}<&-
-done
 
 for filename in $(find "tests-pretty-exceptions" -name "*.lat"); do
   [ -e "$filename" ] || continue
