@@ -21,7 +21,7 @@ separator ArgC "," ;
 
 ClsMthdDecl.    ClsMemDeclC ::= FunDefC ;
 ClsAttrDecl.    ClsMemDeclC ::= Type [AttrItemC] ";" ;
-separator nonempty ClsMemDeclC "" ;
+separator ClsMemDeclC "" ;
 AttrItem.   AttrItemC ::= Ident ;
 separator nonempty AttrItemC "," ;
 
@@ -63,6 +63,7 @@ LVar.       LVal ::= Ident ;
 LArrAcc.    LVal ::= Expr6 "[" Expr "]" ;
 LAttrAcc.   LVal ::= Expr6 "." Ident ;
 
+ELitNull.   Expr6 ::= "null" ;
 ELitTrue.   Expr6 ::= "true" ;
 ELitInt.    Expr6 ::= Integer ;
 ELitFalse.  Expr6 ::= "false" ;
@@ -79,7 +80,7 @@ ENot.       Expr5 ::= "!" Expr6 ;
 -- which would result from using the naive version:
 -- ECast.      Expr5 ::= "(" Ident ")" "null"; -- this introduces a conflict
 token TokNull (')' [" \t"]* {"null"}) ;
-ECast.      Expr5 ::= "(" Ident TokNull ;
+ECast.      Expr5 ::= "(" Type TokNull ;
 EMul.       Expr4 ::= Expr4 Op2 Expr5 ;
 EAdd.       Expr3 ::= Expr3 Op1 Expr4 ;
 ERel.       Expr2 ::= Expr2 Op3 Expr3 ;

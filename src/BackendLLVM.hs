@@ -504,6 +504,7 @@ compileExpr (EMul _ expr1 op expr2) = do
         OpDiv _ -> return (llvmCode <> singleton (show returnReg ++ " = sdiv " ++ show argType ++ " " ++ show val1 ++ ", " ++ show val2 ++ "; EDiv\n"), returnReg)
         OpMod _ -> return (llvmCode <> singleton (show returnReg ++ " = srem " ++ show argType ++ " " ++ show val1 ++ ", " ++ show val2 ++ "; EMod\n"), returnReg)
 
+compileExpr (ELitNull _) = error $ "Not implemented: nulls "
 compileExpr (ELitInt _ int) = pure (singleton "", ConstValue (I32 int))
 compileExpr (EString _ str) = do
     ind <- addNewString str
