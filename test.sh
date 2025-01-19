@@ -4,27 +4,13 @@ RT=mrjp-tests
 RT2=lattests
 BIN=./latc
 
-# important: https://stackoverflow.com/a/47091972/3622836
-
-# create temporary files for examination and a pair of fds for each of them
-# that's because we want to read these files and bash doesn't provide a way
-# to seek in file, so after a write we are unable to go back if we only create
-# one fd
-temp_out_fs=$(mktemp)
-exec {fd_out}<>"$temp_out_fs"
-temp_out=/dev/fd/$fd_out
-rm "$temp_out_fs"
-
-temp_err_fs=$(mktemp)
-exec {fd_err}<>"$temp_err_fs"
-temp_err=/dev/fd/$fd_err
-rm "$temp_err_fs"
-
-temp_out_exec_fs=$(mktemp)
-exec {fd_out_exec}<>"$temp_out_exec_fs"
-temp_out_exec=/dev/fd/$fd_out_exec
-rm "$temp_out_exec_fs"
-
+if [ -z "$TEMP_FILE_FD_1" ] || [ -z "$TEMP_FILE_FD_2" ] || [ -z "$TEMP_FILE_FD_3" ]; then
+  echo "Error: TEMP_FILE_FD_1, TEMP_FILE_FD_2 or TEMP_FILE_FD_3 is not set"
+  exit 1
+fi
+temp_out=/dev/fd/$TEMP_FILE_FD_1
+temp_err=/dev/fd/$TEMP_FILE_FD_2
+temp_out_exec=/dev/fd/$TEMP_FILE_FD_3
 
 # "$RT2"/extensions  "$RT"/gr5
 # for filename in $(find "$RT"/good "$RT2"/good -name "*.lat"); do

@@ -10,3 +10,4 @@ Latte/Print.hs
 Latte/Skel.hs
 Latte/Test.hs
 test-tmpfile/driver
+driver
