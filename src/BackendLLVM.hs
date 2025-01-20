@@ -106,6 +106,8 @@ instance Show PrimitiveType where
     show VoidType = "void"
     show (FunctionType retType argTypes) = show retType ++ " (" ++ Data.List.intercalate ", " (map show argTypes) ++ ")"
     show (ClassType (Ident name)) = "%class." ++ name
+    show (ClassVtableType (Ident name)) = "%vtable." ++ name ++ ".type*"
+
 
 data St = St {
     strings :: Map String Integer,
@@ -135,7 +137,7 @@ data Class = Class {
     parent :: Maybe Ident,
     fields :: [(Ident, PrimitiveType)],
     methods :: [(Ident, PrimitiveType)]
-}
+} deriving (Show)
 
 processClass :: Map Ident Class -> ClsDefC -> Map Ident Class
 processClass acc cls = 
@@ -272,25 +274,12 @@ addSelfArgument (Ident clsName) (FunDef pos retType ident args block) = FunDef p
 getMethodType :: Ident -> ClsMemDeclC -> [(Ident, PrimitiveType)]
 getMethodType cls@(Ident iden) (ClsMthdDecl _ mt@(FunDef _ retType (Ident funiden) args _)) = do
     let withSelf = addSelfArgument cls mt
-    [(Ident ("@" ++ iden ++ "_" ++ funiden), llvmType withSelf)]
+    [(Ident funiden, llvmType withSelf)]
 getMethodType _ (ClsAttrDecl {}) = []
 
 getMethodTypes :: ClsDefC -> [(Ident, PrimitiveType)]
 getMethodTypes (ClsDef _ ident mems) = concatMap (getMethodType ident) mems
-
-getMethodIndex :: ClsDefC -> Ident -> Integer
-getMethodIndex cls@(ClsDef _ ident mems) method = do
-    let methods = getMethodTypes cls
-    let methodNames = map fst methods
-    case Data.List.elemIndex method methodNames of
-        Just ind -> toInteger ind
-        Nothing -> error "Internal compiler error: method not found"
-getMethodIndex cls@(ClsDefExt _ ident _ mems) method = do
-    let methods = getMethodTypes cls
-    let methodNames = map fst methods
-    case Data.List.elemIndex method methodNames of
-        Just ind -> toInteger ind
-        Nothing -> error "Internal compiler error: method not found"
+getMethodTypes (ClsDefExt _ ident _ mems) = concatMap (getMethodType ident) mems
 
 createVtable :: ClsDefC -> IM (Data.Sequence.Seq String)
 createVtable cls@(ClsDef _ (Ident clsName) mems) = do
@@ -322,9 +311,9 @@ createIndexOfMethod cls@(ClsDefExt _ (Ident clsName) (Ident parent) mems) = do
     return $ Data.Map.fromList $ zip methodNames [0..]
 
 instance Compilable ClsDefC where
-    compile c@(ClsDef _ ident mems) = do
-        let structName = "%class." ++ show ident
-        let structVtableType = "%vtable." ++ show ident ++ " = type { i8* }"
+    compile c@(ClsDef _ (Ident nam) mems) = do
+        let structName = "%class." ++ nam
+        let structVtableType = "%vtable." ++ nam ++ " = type { i8* }"
         let members = getAttrTypes c
         let structDecl = unlines [
                 structName ++ " = type { ",
@@ -332,9 +321,9 @@ instance Compilable ClsDefC where
                 "}"
                 ]
         return $ singleton structDecl
-    compile c@(ClsDefExt _ ident (Ident parent) mems) = do
-        let structName = "%class." ++ show ident
-        let structVtableType = "%vtable." ++ show ident ++ " = type { i8* }"
+    compile c@(ClsDefExt _ (Ident nam) (Ident parent) mems) = do
+        let structName = "%class." ++ nam
+        let structVtableType = "%vtable." ++ nam ++ " = type { i8* }"
         let members = getAttrTypes c
         let structDecl = unlines [
                 structName ++ " = type { ",
@@ -557,11 +546,11 @@ getMethodType2 className methodName classMap =
     Data.Map.lookup className classMap >>= \(Class _ _ methods) -> Data.List.lookup methodName methods
 
 -- Function to retrieve method index in the vtable
-getMethodIndex2 :: Ident -> Ident -> Map Ident Class -> Maybe Integer
+getMethodIndex2 :: Ident -> Ident -> Map Ident Class -> Maybe Int
 getMethodIndex2 className methodName classMap = 
     Data.Map.lookup className classMap >>= \(Class _ _ methods) -> 
         let methodNames = map fst methods
-        in Data.List.elemIndex methodName methodNames >>= Just . toInteger
+        in Data.List.elemIndex methodName methodNames
 
 compileExpr :: Expr -> IM (Data.Sequence.Seq String, Value)
 compileExpr (EMethodApply _ expr method args) = do
@@ -573,7 +562,7 @@ compileExpr (EMethodApply _ expr method args) = do
     let argsStr = Data.List.intercalate ", " $ zipWith (\ argType argVal -> show argType ++ " " ++ show argVal) argTypes argVals
 
     let clsname = case val of
-            Register _ (PointerType (ClassType clsName)) -> clsName
+            Register _ (ClassType clsName) -> clsName
             _ -> error "Internal compiler error: trying to call method on non-class"
     
     -- first entry of an object is pointer to vtable
@@ -582,9 +571,9 @@ compileExpr (EMethodApply _ expr method args) = do
     let vtablePtrReg = Register loc (PointerType (ClassVtableType clsname))
     classes' <- classes <$> ask
     let methodType' = getMethodType2 clsname method classes'
-    let methodType = fromMaybe (error "Internal compiler error: method not found") methodType'
+    let methodType = fromMaybe (error ("Internal compiler error: method not found" ++ show classes' ++ "\n " ++ show clsname ++ " " ++ show method)) methodType'
     let methodIndex' = getMethodIndex2 clsname method classes'
-    let methodIndex = fromMaybe (error "Internal compiler error: method not found") methodIndex'
+    let methodIndex = fromMaybe (error ("Internal compiler error: method not found" ++ show classes' ++ "\n " ++ show clsname ++ " " ++ show method)) methodIndex'
     let codeGetVtablePtr = singleton (show vtablePtrReg ++ " = getelementptr " ++ show (ClassType clsname) ++ ", " ++ show (PointerType (ClassType clsname)) ++ " " ++ show val ++ ", i32 0, i32 0\n")
     loc2 <- gets currentLoc
     modify (\st -> st { currentLoc = loc2 + 1 })
