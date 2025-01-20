@@ -1,6 +1,4 @@
 {-# LANGUAGE FlexibleInstances #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-{-# HLINT ignore "Use newtype instead of data" #-}
 {-# LANGUAGE GADTs #-}
 module BackendLLVM ( emitLLVM ) where
 
@@ -18,26 +16,21 @@ import Control.Monad.Writer (WriterT (runWriterT))
 import qualified Data.Foldable
 import qualified Control.Monad.RWS as Data.Sequence
 import qualified Data.List
-import Data.Maybe (Maybe)
+import Data.Maybe (Maybe, fromMaybe, maybeToList)
 import Data.Foldable (toList)
 import Data.Char(ord)
 import Numeric(showHex)
 import Text.ParserCombinators.ReadP (char)
+import Data.Graph (Graph, Vertex, graphFromEdges, topSort)
+
 
 newtype Label = Label Integer
     deriving (Eq)
 
-newtype VarName = VarName Integer 
+newtype VarName = VarName Integer
     deriving (Eq)
 
 newtype Var = Var (VarName, PrimitiveType)
-    deriving (Eq)
-
--- name of type mapping variable 
--- newtype 
-
-data BasicBlock =
-    BasicBlock Label (Map Var (Map Label Value)) (Data.Sequence.Seq String)
     deriving (Eq)
 
 data PrimitiveType =
@@ -45,8 +38,10 @@ data PrimitiveType =
     | I8Type
     | I32Type
     | I1Type
-    | StructType [PrimitiveType]
     | PointerType PrimitiveType
+    | FunctionType PrimitiveType [PrimitiveType]
+    | ClassType Ident
+    | ClassVtableType Ident
     deriving (Eq)
 
 data Primitive =
@@ -83,7 +78,6 @@ instance LLVMTypeable Primitive where
     llvmType (I1 _) = I1Type
     llvmType (I8 _) = I8Type
     llvmType (I32 _) = I32Type
-    llvmType (Struct fields) = StructType $ map llvmType fields
     llvmType (Pointer p) = PointerType $ llvmType p
 
 instance LLVMTypeable Value where
@@ -96,22 +90,28 @@ instance LLVMTypeable (Type' BNFC'Position) where
     llvmType (TStr _) = PointerType I8Type
     llvmType (TBool _) = I1Type
     llvmType (TVoid _) = VoidType
+    llvmType (TCls _ (Ident name)) = ClassType (Ident name)
+    llvmType (TFun _ retType argTypes) = FunctionType (llvmType retType) (map llvmType argTypes)
+
+instance LLVMTypeable (FunDefC' BNFC'Position) where
+    llvmType (FunDef _ retType _ args _) = do
+        let argTypes = map (\(Arg _ type_ _) -> llvmType type_) args
+        PointerType $ FunctionType (llvmType retType) argTypes
 
 instance Show PrimitiveType where
     show I1Type = "i1"
     show I8Type = "i8"
     show I32Type = "i32"
-    show (StructType fields) = "{" ++ Data.List.intercalate ", " (map show fields) ++ "}"
     show (PointerType p) = show p ++ "*"
     show VoidType = "void"
+    show (FunctionType retType argTypes) = show retType ++ " (" ++ Data.List.intercalate ", " (map show argTypes) ++ ")"
+    show (ClassType (Ident name)) = "%class." ++ name
 
 data St = St {
     strings :: Map String Integer,
     currentLoc :: Integer,
     currentLabel :: Integer,
-    localVars :: Map Ident Value,
-    currentBasicBlock :: BasicBlock,
-    basicBlocks :: Map Label BasicBlock
+    localVars :: Map Ident Value
 }
 initState :: St
 initState = St {
@@ -131,11 +131,41 @@ addNewString str = do
             modify (\st -> st { strings = Data.Map.insert str ind strings })
             return ind
 
+data Class = Class {
+    parent :: Maybe Ident,
+    fields :: [(Ident, PrimitiveType)],
+    methods :: [(Ident, PrimitiveType)]
+}
+
+processClass :: Map Ident Class -> ClsDefC -> Map Ident Class
+processClass acc cls = 
+    let inheritedFields  = maybe [] (\p -> fromMaybe [] (Data.Map.lookup p acc >>= Just . fields)) (getParentName cls)
+        inheritedMethods = maybe [] (\p -> fromMaybe [] (Data.Map.lookup p acc >>= Just . methods)) (getParentName cls)
+        newClass = Class (getParentName cls) (inheritedFields ++ getAttrTypes cls) (inheritedMethods ++ getMethodTypes cls)
+    in Data.Map.insert (getClassName cls) newClass acc
+
+getClassName :: ClsDefC -> Ident
+getClassName (ClsDef _ ident _) = ident
+getClassName (ClsDefExt _ ident _ _) = ident
+
+getParentName :: ClsDefC -> Maybe Ident
+getParentName (ClsDef _ _ _) = Nothing
+getParentName (ClsDefExt _ _ ident _) = Just ident
+
+createClassMap :: [ClsDefC] -> Map Ident Class
+createClassMap clsDefs = 
+    let (graph, nodeFromVertex, _) = graphFromEdges [(cls, getClassName cls, maybeToList (getParentName cls)) | cls <- clsDefs]
+        sortedVertices = topSort graph
+        sortedClasses = map (\v -> let (cls, _, _) = nodeFromVertex v in cls) sortedVertices
+    in foldl processClass Data.Map.empty sortedClasses
+
+
 data Env = Env {
     var :: Map Ident Value,
     returnType :: Maybe PrimitiveType,
     functionRetTypes :: Map String (Type' BNFC'Position),
-    functionArgTypes :: Map String [Type' BNFC'Position]
+    functionArgTypes :: Map String [Type' BNFC'Position],
+    classes :: Map Ident Class
 }
 initEnv :: Env
 initEnv = Env {
@@ -170,6 +200,12 @@ filterFuns = foldr f [] where
     f (FunDefTop _ fundef) acc = fundef : acc
     f _ acc = acc
 
+filterCls :: [TopDefC] -> [ClsDefC]
+filterCls = foldr f [] where
+    f :: TopDefC -> [ClsDefC] -> [ClsDefC]
+    f (ClsDefTop _ clsdef) acc = clsdef : acc
+    f _ acc = acc
+
 emitLLVM :: ProgramC -> String
 emitLLVM prog@(Program _ topDefs) = do
     let funs = filterFuns topDefs
@@ -181,7 +217,6 @@ emitLLVM prog@(Program _ topDefs) = do
     let functionArgTypes = Data.Map.union functionArgTypes' initFunArgTypes
     let (output, _) = runIM (compile prog) (initEnv {functionRetTypes = functionRetTypes, functionArgTypes = functionArgTypes}) initState
     concat $ Data.Foldable.toList output
-
 
 charToHex :: Char -> String
 charToHex c = do
@@ -198,17 +233,116 @@ instance Compilable ProgramC where
                 "declare i8* @readString()",
                 "declare i8* @__internal_concat(i8*, i8*)"
                 ]
-        compiledTopDefs <- traverse compile topDefs
+
+        indexOfField <- foldr Data.Map.union Data.Map.empty <$> traverse createIndexOfField (filterCls topDefs)
+        indexOfMethod <- foldr Data.Map.union Data.Map.empty <$> traverse createIndexOfMethod (filterCls topDefs)
+        let env = initEnv { classes = createClassMap (filterCls topDefs) }
+        compiledTopDefs <- traverse (local (const env) . compile) topDefs
+        -- compiledTopDefs <- traverse compile topDefs
         let code = mconcat compiledTopDefs
         allStrings <- gets strings
         -- change string to hex encoding
         let prepString rawStr = "\"" ++ concatMap charToHex rawStr ++ "\\00\""
         let llvmStrings = unlines $ map (\(str, ind) -> "@strings" ++ show ind ++ " = private constant [" ++ show (length str + 1) ++ " x i8] c" ++ prepString str ++ "\n") $ Data.Map.toList allStrings
+        let vtables = mconcat <$> traverse createVtable (filterCls topDefs)
         return $ initCode <> singleton llvmStrings <> code
 
 instance Compilable TopDefC where
     compile (FunDefTop _ def) = compile def
-    compile (ClsDefTop _ def) = error "Classes not supported"
+    compile (ClsDefTop _ def) = compile def
+
+getArgType :: ArgC -> Type
+getArgType (Arg _ t _) = t
+
+getMemberType :: ClsMemDeclC -> [(Ident, Type)]
+getMemberType (ClsMthdDecl _ (FunDef _ retType ident args _)) = [(ident, TFun BNFC'NoPosition retType (map getArgType args))]
+getMemberType (ClsAttrDecl _ t items) = map (\(AttrItem _ ident) -> (ident, t)) items
+
+getAttrType :: ClsMemDeclC -> [(Ident, PrimitiveType)]
+getAttrType (ClsMthdDecl _ _) = []
+getAttrType (ClsAttrDecl _ t items) = map (\(AttrItem _ ident) -> (ident, llvmType t)) items
+
+getAttrTypes :: ClsDefC -> [(Ident, PrimitiveType)]
+getAttrTypes (ClsDef _ _ mems) = concatMap getAttrType mems
+getAttrTypes (ClsDefExt _ _ _ mems) = concatMap getAttrType mems
+
+addSelfArgument :: Ident -> FunDefC -> FunDefC
+addSelfArgument (Ident clsName) (FunDef pos retType ident args block) = FunDef pos retType ident (Arg pos (TCls pos (Ident clsName)) (Ident "self") : args) block
+
+getMethodType :: Ident -> ClsMemDeclC -> [(Ident, PrimitiveType)]
+getMethodType cls@(Ident iden) (ClsMthdDecl _ mt@(FunDef _ retType (Ident funiden) args _)) = do
+    let withSelf = addSelfArgument cls mt
+    [(Ident ("@" ++ iden ++ "_" ++ funiden), llvmType withSelf)]
+getMethodType _ (ClsAttrDecl {}) = []
+
+getMethodTypes :: ClsDefC -> [(Ident, PrimitiveType)]
+getMethodTypes (ClsDef _ ident mems) = concatMap (getMethodType ident) mems
+
+getMethodIndex :: ClsDefC -> Ident -> Integer
+getMethodIndex cls@(ClsDef _ ident mems) method = do
+    let methods = getMethodTypes cls
+    let methodNames = map fst methods
+    case Data.List.elemIndex method methodNames of
+        Just ind -> toInteger ind
+        Nothing -> error "Internal compiler error: method not found"
+getMethodIndex cls@(ClsDefExt _ ident _ mems) method = do
+    let methods = getMethodTypes cls
+    let methodNames = map fst methods
+    case Data.List.elemIndex method methodNames of
+        Just ind -> toInteger ind
+        Nothing -> error "Internal compiler error: method not found"
+
+createVtable :: ClsDefC -> IM (Data.Sequence.Seq String)
+createVtable cls@(ClsDef _ (Ident clsName) mems) = do
+    let methods = getMethodTypes cls
+    let vtableType = "%vtable." ++ clsName ++ ".type = type { " ++ Data.List.intercalate ", " (map (show . snd) methods) ++ " }"
+    let vtable = "%vtable." ++ clsName ++ " = global %vtable." ++ clsName ++ ".type { " ++ Data.List.intercalate ", " (map f methods) ++ " }"
+    return $ singleton vtableType <> singleton vtable
+    where
+        f (ident, type_) = show type_ ++ " " ++ show ident
+
+createIndexOfField :: ClsDefC -> IM (Map Ident Integer)
+createIndexOfField cls@(ClsDef _ (Ident clsName) mems) = do
+    let attrs = getAttrTypes cls
+    let attrNames = map fst attrs
+    return $ Data.Map.fromList $ zip attrNames [0..]
+createIndexOfField cls@(ClsDefExt _ (Ident clsName) (Ident parent) mems) = do
+    let attrs = getAttrTypes cls
+    let attrNames = map fst attrs
+    return $ Data.Map.fromList $ zip attrNames [0..]
+
+createIndexOfMethod :: ClsDefC -> IM (Map Ident Integer)
+createIndexOfMethod cls@(ClsDef _ (Ident clsName) mems) = do
+    let methods = getMethodTypes cls
+    let methodNames = map fst methods
+    return $ Data.Map.fromList $ zip methodNames [0..]
+createIndexOfMethod cls@(ClsDefExt _ (Ident clsName) (Ident parent) mems) = do
+    let methods = getMethodTypes cls
+    let methodNames = map fst methods
+    return $ Data.Map.fromList $ zip methodNames [0..]
+
+instance Compilable ClsDefC where
+    compile c@(ClsDef _ ident mems) = do
+        let structName = "%class." ++ show ident
+        let structVtableType = "%vtable." ++ show ident ++ " = type { i8* }"
+        let members = getAttrTypes c
+        let structDecl = unlines [
+                structName ++ " = type { ",
+                Data.List.intercalate ", " (map (show . snd) members),
+                "}"
+                ]
+        return $ singleton structDecl
+    compile c@(ClsDefExt _ ident (Ident parent) mems) = do
+        let structName = "%class." ++ show ident
+        let structVtableType = "%vtable." ++ show ident ++ " = type { i8* }"
+        let members = getAttrTypes c
+        let structDecl = unlines [
+                structName ++ " = type { ",
+                Data.List.intercalate ", " (map (show . snd) members),
+                "}"
+                ]
+        return $ singleton structDecl
+
 
 instance Compilable (Type' BNFC'Position) where
     compile (TInt _) = pure $ Data.Sequence.singleton "i32"
@@ -219,7 +353,7 @@ instance Compilable (Type' BNFC'Position) where
 instance Compilable (ArgC' BNFC'Position) where
     compile (Arg _ typ (Ident name)) = do
         llvmType <- concat . toList <$> compile typ
-        return $ singleton $ llvmType ++ " %" ++ name   
+        return $ singleton $ llvmType ++ " %" ++ name
 
 instance Compilable FunDefC where
     compile (FunDef _ retType_ (Ident name) args block@(Block _ stmts)) = do
@@ -417,13 +551,70 @@ concatStrings expr1 expr2 = do
         returnReg
         )
 
+
+getMethodType2 :: Ident -> Ident -> Map Ident Class -> Maybe PrimitiveType
+getMethodType2 className methodName classMap = 
+    Data.Map.lookup className classMap >>= \(Class _ _ methods) -> Data.List.lookup methodName methods
+
+-- Function to retrieve method index in the vtable
+getMethodIndex2 :: Ident -> Ident -> Map Ident Class -> Maybe Integer
+getMethodIndex2 className methodName classMap = 
+    Data.Map.lookup className classMap >>= \(Class _ _ methods) -> 
+        let methodNames = map fst methods
+        in Data.List.elemIndex methodName methodNames >>= Just . toInteger
+
 compileExpr :: Expr -> IM (Data.Sequence.Seq String, Value)
+compileExpr (EMethodApply _ expr method args) = do
+    (llvmCode, val) <- compileExpr expr
+    compiledArgs <- traverse compileExpr args
+    let llvmCodeArgs = mconcat . map fst $ compiledArgs
+    let argVals = map snd compiledArgs
+    let argTypes = map llvmType argVals
+    let argsStr = Data.List.intercalate ", " $ zipWith (\ argType argVal -> show argType ++ " " ++ show argVal) argTypes argVals
+
+    let clsname = case val of
+            Register _ (PointerType (ClassType clsName)) -> clsName
+            _ -> error "Internal compiler error: trying to call method on non-class"
+    
+    -- first entry of an object is pointer to vtable
+    loc <- gets currentLoc
+    modify (\st -> st { currentLoc = loc + 1 })
+    let vtablePtrReg = Register loc (PointerType (ClassVtableType clsname))
+    classes' <- classes <$> ask
+    let methodType' = getMethodType2 clsname method classes'
+    let methodType = fromMaybe (error "Internal compiler error: method not found") methodType'
+    let methodIndex' = getMethodIndex2 clsname method classes'
+    let methodIndex = fromMaybe (error "Internal compiler error: method not found") methodIndex'
+    let codeGetVtablePtr = singleton (show vtablePtrReg ++ " = getelementptr " ++ show (ClassType clsname) ++ ", " ++ show (PointerType (ClassType clsname)) ++ " " ++ show val ++ ", i32 0, i32 0\n")
+    loc2 <- gets currentLoc
+    modify (\st -> st { currentLoc = loc2 + 1 })
+    let vtableReg = Register loc2 (ClassVtableType clsname)
+    let codeLoadVtable = singleton (show vtableReg ++ " = load " ++ show (PointerType (ClassVtableType clsname)) ++ ", " ++ show (PointerType (PointerType (ClassVtableType clsname))) ++ " " ++ show vtablePtrReg ++ "\n")
+    loc3 <- gets currentLoc
+    modify (\st -> st { currentLoc = loc3 + 1 })
+    let methodPtrReg = Register loc3 (PointerType methodType)
+    let getMethodPtr = singleton (show methodPtrReg ++ " = getelementptr " ++ show (ClassVtableType clsname) ++ ", " ++ show (PointerType (ClassVtableType clsname)) ++ " " ++ show vtableReg ++ ", i32 0, i32 " ++ show methodIndex ++ "\n")
+    loc4 <- gets currentLoc
+    modify (\st -> st { currentLoc = loc4 + 1 })
+    let methodReg = Register loc4 methodType
+    let loadMethod = singleton (show methodReg ++ " = load " ++ show (PointerType methodType) ++ ", " ++ show (PointerType (PointerType methodType)) ++ " " ++ show methodPtrReg ++ "\n")
+    loc5 <- gets currentLoc
+    modify (\st -> st { currentLoc = loc5 + 1 })
+    let returnRegister = Register loc (PointerType I8Type)
+    env <- ask
+    let methodReturnType = case methodType of
+            FunctionType retType _ -> retType
+            _ -> error "Internal compiler error: method type is not a function"
+    let evalMethod = singleton (show returnRegister ++ " = call " ++ show (PointerType I8Type) ++ " " ++ show methodReg ++ "(" ++ show (PointerType (ClassType clsname)) ++ " " ++ show val ++ ", i8* " ++ show vtablePtrReg ++ ", " ++ argsStr ++ ")\n")
+    return (llvmCode <> llvmCodeArgs <> codeGetVtablePtr <> codeLoadVtable <> getMethodPtr <> loadMethod <> evalMethod, returnRegister)
+
 compileExpr (EApp _ (Ident ident) args) = do
-    compiledArgs <- traverse (\expr -> do
-            (llvmCode, val) <- compileExpr expr
-            (loadCode, valLoaded) <- dereferenceIfNeed val
-            return (llvmCode <> loadCode, valLoaded)
-            ) args
+    compiledArgs <- traverse compileExpr args
+    -- compiledArgs <- traverse (\expr -> do
+    --         (llvmCode, val) <- compileExpr expr
+    --         (loadCode, valLoaded) <- dereferenceIfNeed val
+    --         return (llvmCode <> loadCode, valLoaded)
+    --         ) args
     let llvmCode = mconcat . map fst $ compiledArgs
     -- take function types from environment
     env <- ask
