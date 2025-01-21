@@ -2,7 +2,7 @@
 {-# LANGUAGE InstanceSigs #-}
 
 
-module TypeChecker (typeCheck, CheckEnv, typeCheck_) where
+module TypeChecker (typeCheck) where
 
 import Latte.Par
 import Latte.Abs
