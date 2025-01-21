@@ -60,3 +60,10 @@ char* __internal_concat(char *str1, char *str2)
 
     return res;
 }
+
+char* __calloc(size_t n)
+{
+    char* res = calloc(n, sizeof(char));
+    if (!res) { error(); }
+    return res;
+}

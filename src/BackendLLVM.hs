@@ -90,7 +90,7 @@ instance LLVMTypeable (Type' BNFC'Position) where
     llvmType (TStr _) = PointerType I8Type
     llvmType (TBool _) = I1Type
     llvmType (TVoid _) = VoidType
-    llvmType (TCls _ (Ident name)) = ClassType (Ident name)
+    llvmType (TCls _ (Ident name)) = PointerType $ ClassType (Ident name)
     llvmType (TFun _ retType argTypes) = FunctionType (llvmType retType) (map llvmType argTypes)
 
 instance LLVMTypeable (FunDefC' BNFC'Position) where
@@ -106,7 +106,7 @@ instance Show PrimitiveType where
     show VoidType = "void"
     show (FunctionType retType argTypes) = show retType ++ " (" ++ Data.List.intercalate ", " (map show argTypes) ++ ")"
     show (ClassType (Ident name)) = "%class." ++ name
-    show (ClassVtableType (Ident name)) = "%vtable." ++ name ++ ".type*"
+    show (ClassVtableType (Ident name)) = "%vtable." ++ name ++ ".type"
 
 
 data St = St {
@@ -138,6 +138,11 @@ data Class = Class {
     fields :: [(Ident, PrimitiveType)],
     methods :: [(Ident, PrimitiveType)]
 } deriving (Show)
+
+classSize :: Class -> Integer
+classSize cls = do
+    let fields' = fields cls
+    8 + 8 * toInteger (length fields')
 
 processClass :: Map Ident Class -> ClsDefC -> Map Ident Class
 processClass acc cls = 
@@ -233,12 +238,14 @@ instance Compilable ProgramC where
                 "declare void @error()",
                 "declare i32 @readInt()",
                 "declare i8* @readString()",
-                "declare i8* @__internal_concat(i8*, i8*)"
+                "declare i8* @__internal_concat(i8*, i8*)",
+                "declare i8* @__calloc(i32)"
                 ]
 
         indexOfField <- foldr Data.Map.union Data.Map.empty <$> traverse createIndexOfField (filterCls topDefs)
         indexOfMethod <- foldr Data.Map.union Data.Map.empty <$> traverse createIndexOfMethod (filterCls topDefs)
-        let env = initEnv { classes = createClassMap (filterCls topDefs) }
+        env' <- ask
+        let env = env' { classes = createClassMap (filterCls topDefs) }
         compiledTopDefs <- traverse (local (const env) . compile) topDefs
         -- compiledTopDefs <- traverse compile topDefs
         let code = mconcat compiledTopDefs
@@ -284,11 +291,19 @@ getMethodTypes (ClsDefExt _ ident _ mems) = concatMap (getMethodType ident) mems
 createVtable :: ClsDefC -> IM (Data.Sequence.Seq String)
 createVtable cls@(ClsDef _ (Ident clsName) mems) = do
     let methods = getMethodTypes cls
-    let vtableType = "%vtable." ++ clsName ++ ".type = type { " ++ Data.List.intercalate ", " (map (show . snd) methods) ++ " }"
-    let vtable = "%vtable." ++ clsName ++ " = global %vtable." ++ clsName ++ ".type { " ++ Data.List.intercalate ", " (map f methods) ++ " }"
+    let vtableType = "%vtable." ++ clsName ++ ".type = type { " ++ Data.List.intercalate ", " (map (show . snd) methods) ++ " }\n"
+    let vtable = "@vtable." ++ clsName ++ " = global %vtable." ++ clsName ++ ".type { " ++ Data.List.intercalate ", " (map f methods) ++ " }\n"
     return $ singleton vtableType <> singleton vtable
     where
-        f (ident, type_) = show type_ ++ " " ++ show ident
+        f ((Ident ident), type_) = show type_ ++ " " ++ "@" ++ clsName ++ "_" ++ ident
+createVtable cls@(ClsDefExt _ (Ident clsName) _ mems) = do
+    let methods = getMethodTypes cls
+    let vtableType = "%vtable." ++ clsName ++ ".type = type { " ++ Data.List.intercalate ", " (map (show . snd) methods) ++ " }\n"
+    let vtable = "@vtable." ++ clsName ++ " = global %vtable." ++ clsName ++ ".type { " ++ Data.List.intercalate ", " (map f methods) ++ " }\n"
+    return $ singleton vtableType <> singleton vtable
+    where
+        f ((Ident ident), type_) = show type_ ++ " " ++ "@" ++ clsName ++ "_" ++ ident
+
 
 createIndexOfField :: ClsDefC -> IM (Map Ident Integer)
 createIndexOfField cls@(ClsDef _ (Ident clsName) mems) = do
@@ -312,25 +327,27 @@ createIndexOfMethod cls@(ClsDefExt _ (Ident clsName) (Ident parent) mems) = do
 
 instance Compilable ClsDefC where
     compile c@(ClsDef _ (Ident nam) mems) = do
+        vtable <- createVtable c
         let structName = "%class." ++ nam
-        let structVtableType = "%vtable." ++ nam ++ " = type { i8* }"
+        let vtable_ptr = ["%vtable." ++ nam ++ ".type*"]
         let members = getAttrTypes c
         let structDecl = unlines [
                 structName ++ " = type { ",
-                Data.List.intercalate ", " (map (show . snd) members),
+                Data.List.intercalate ", " (vtable_ptr ++ map (show . snd) members),
                 "}"
                 ]
-        return $ singleton structDecl
+        return $ vtable <> singleton structDecl
     compile c@(ClsDefExt _ (Ident nam) (Ident parent) mems) = do
+        vtable <- createVtable c
         let structName = "%class." ++ nam
-        let structVtableType = "%vtable." ++ nam ++ " = type { i8* }"
+        let vtable_ptr = ["%vtable." ++ nam ++ ".type*"]
         let members = getAttrTypes c
         let structDecl = unlines [
                 structName ++ " = type { ",
-                Data.List.intercalate ", " (map (show . snd) members),
+                Data.List.intercalate ", " (vtable_ptr ++ map (show . snd) members),
                 "}"
                 ]
-        return $ singleton structDecl
+        return $ vtable <> singleton structDecl
 
 
 instance Compilable (Type' BNFC'Position) where
@@ -552,6 +569,9 @@ getMethodIndex2 className methodName classMap =
         let methodNames = map fst methods
         in Data.List.elemIndex methodName methodNames
 
+-- getFunctionIdent :: Maybe Ident -> Ident -> Ident
+-- getFunctionIdent Nothing (Ident name) = "@" ++ name
+
 compileExpr :: Expr -> IM (Data.Sequence.Seq String, Value)
 compileExpr (EMethodApply _ expr method args) = do
     (llvmCode, val) <- compileExpr expr
@@ -562,7 +582,7 @@ compileExpr (EMethodApply _ expr method args) = do
     let argsStr = Data.List.intercalate ", " $ zipWith (\ argType argVal -> show argType ++ " " ++ show argVal) argTypes argVals
 
     let clsname = case val of
-            Register _ (ClassType clsName) -> clsName
+            Register _ (PointerType (ClassType clsName)) -> clsName
             _ -> error "Internal compiler error: trying to call method on non-class"
     
     -- first entry of an object is pointer to vtable
@@ -599,11 +619,6 @@ compileExpr (EMethodApply _ expr method args) = do
 
 compileExpr (EApp _ (Ident ident) args) = do
     compiledArgs <- traverse compileExpr args
-    -- compiledArgs <- traverse (\expr -> do
-    --         (llvmCode, val) <- compileExpr expr
-    --         (loadCode, valLoaded) <- dereferenceIfNeed val
-    --         return (llvmCode <> loadCode, valLoaded)
-    --         ) args
     let llvmCode = mconcat . map fst $ compiledArgs
     -- take function types from environment
     env <- ask
@@ -729,7 +744,35 @@ compileExpr (EAnd _ expr1 _ expr2) = do
         , returnReg)
 
 compileExpr (ENewArr _ type_ expr) = pure (singleton "", Register 0 (PointerType I8Type))
-compileExpr (ENew _ type_) = pure (singleton "", Register 0 (PointerType I8Type))
+compileExpr (ENew _ ident) = do
+    -- construct a default object of class ident
+    classes' <- classes <$> ask
+    let class_ = case Data.Map.lookup ident classes' of
+            Just cls -> cls
+            Nothing -> error $ "Internal compiler error: class " ++ show ident ++ " not found"
+    -- use malloc to allocate memory for the object
+    loc <- gets currentLoc
+    modify (\st -> st { currentLoc = loc + 1 })
+    let callocReg = Register loc (PointerType I8Type)
+    let callocCode = singleton (show callocReg ++ " = call i8*  @__calloc(i32 " ++ show (classSize class_) ++ ")\n")
+    -- bitcast
+    loc2 <- gets currentLoc
+    modify (\st -> st { currentLoc = loc2 + 1 })
+    let bitcastReg = Register loc2 (PointerType (ClassType ident))
+    let bitcastCode = singleton (show bitcastReg ++ " = bitcast i8* " ++ show callocReg ++ " to " ++ show (PointerType (ClassType ident)) ++ "\n")
+    loc3 <- gets currentLoc
+    modify (\st -> st { currentLoc = loc3 + 1 })
+    let vtableReg = Register loc3 (PointerType (ClassVtableType ident))
+    let vtableFetchCode = singleton (show vtableReg ++ " = getelementptr inbounds " ++ show (ClassType ident) ++ ", " ++ show (PointerType (ClassType ident)) ++ " " ++ show bitcastReg ++ ", i32 0, i32 0\n")
+    -- store vtable in allocated object
+    storeCode <- storeVtable ident vtableReg
+    return (callocCode <> bitcastCode <> vtableFetchCode <> storeCode, bitcastReg)
+
+
+storeVtable :: Ident -> Value -> IM (Data.Sequence.Seq String)
+storeVtable ident@(Ident i) objReg = do
+    let vtable = "@vtable." ++ i
+    return $ singleton ("store " ++ show (PointerType (ClassVtableType ident)) ++ " " ++ vtable ++ ", " ++ show (PointerType (PointerType (ClassVtableType ident))) ++ " " ++ show objReg ++ "\n")
 
 getVarValue :: Ident -> IM Value
 getVarValue ident = do
