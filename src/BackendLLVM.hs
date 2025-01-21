@@ -199,10 +199,6 @@ getMethodIndex className methodName classMap =
 -- getFunctionIdent :: Maybe Ident -> Ident -> Ident
 -- getFunctionIdent Nothing (Ident name) = "@" ++ name
 
-storeVtable :: Ident -> Value -> IM (Data.Sequence.Seq String)
-storeVtable ident@(Ident i) objReg = do
-    let vtable = "@vtable." ++ i
-    return $ singleton ("store " ++ show (PointerType (ClassVtableType ident)) ++ " " ++ vtable ++ ", " ++ show (PointerType (PointerType (ClassVtableType ident))) ++ " " ++ show objReg ++ "\n")
 
 getAttrType :: ClsMemDeclC -> [(Ident, PrimitiveType)]
 getAttrType (ClsMthdDecl _ _) = []
@@ -619,78 +615,62 @@ concatStrings expr1 expr2 = do
         )
 
 compileExpr :: Expr -> IM ([BasicBlock], Value)
--- compileExpr (EMethodApply _ expr method args) = do
---     (llvmCode, val) <- compileExpr expr
---     compiledArgs <- traverse compileExpr args
---     let llvmCodeArgs = mconcat . map fst $ compiledArgs
---     let argVals = map snd compiledArgs
---     let argTypes = map llvmType argVals
---     let argsStr = Data.List.intercalate ", " $ zipWith (\ argType argVal -> show argType ++ " " ++ show argVal) argTypes argVals
+compileExpr (EMethodApply _ expr method args) = do
+    (llvmCode, val) <- compileExpr expr
+    -- val is Pointer to a class, i.e. Pointer to Pointer to Vtable
+    case llvmType val of
+        PointerType (PointerType (ClassVtableType clsName)) -> do
+            return ()
+        _ -> error "Internal compiler error: trying to call method on non-class"
 
---     let clsname = case val of
---             Register _ (PointerType (ClassType clsName)) -> clsName
---             _ -> error "Internal compiler error: trying to call method on non-class"
+    compiledArgs <- traverse compileExpr args
+    let llvmCodeArgs = mconcat . map fst $ compiledArgs
+    let argVals = map snd compiledArgs
+    let argTypes = map llvmType argVals
+    let argsStr = Data.List.intercalate ", " $ zipWith (\ argType argVal -> show argType ++ " " ++ show argVal) argTypes argVals
 
---     -- first entry of an object is pointer to vtable
---     loc <- gets currentLoc
---     modify (\st -> st { currentLoc = loc + 1 })
---     let vtablePtrReg = Register loc (PointerType (ClassVtableType clsname))
---     classes' <- asks classes
---     let methodType' = getMethodType2 clsname method classes'
---     let methodType = fromMaybe (error ("Internal compiler error: method not found" ++ show classes' ++ "\n " ++ show clsname ++ " " ++ show method)) methodType'
---     let methodIndex' = getMethodIndex clsname method classes'
---     let methodIndex = fromMaybe (error ("Internal compiler error: method not found" ++ show classes' ++ "\n " ++ show clsname ++ " " ++ show method)) methodIndex'
---     let codeGetVtablePtr = singleton (show vtablePtrReg ++ " = getelementptr " ++ show (ClassType clsname) ++ ", " ++ show (PointerType (ClassType clsname)) ++ " " ++ show val ++ ", i32 0, i32 0\n")
---     loc2 <- gets currentLoc
---     modify (\st -> st { currentLoc = loc2 + 1 })
---     let vtableReg = Register loc2 (ClassVtableType clsname)
---     let codeLoadVtable = singleton (show vtableReg ++ " = load " ++ show (PointerType (ClassVtableType clsname)) ++ ", " ++ show (PointerType (PointerType (ClassVtableType clsname))) ++ " " ++ show vtablePtrReg ++ "\n")
---     loc3 <- gets currentLoc
---     modify (\st -> st { currentLoc = loc3 + 1 })
+    let clsname = case val of
+            Register _ (PointerType (ClassType clsName)) -> clsName
+            _ -> error "Internal compiler error: trying to call method on non-class"
 
--- compileExpr (EMethodApply _ expr method args) = do
---     (llvmCode, val) <- compileExpr expr
---     compiledArgs <- traverse compileExpr args
---     let llvmCodeArgs = mconcat . map fst $ compiledArgs
---     let argVals = map snd compiledArgs
---     let argTypes = map llvmType argVals
---     let argsStr = Data.List.intercalate ", " $ zipWith (\ argType argVal -> show argType ++ " " ++ show argVal) argTypes argVals
+    -- first entry of an object is pointer to vtable
+    loc <- gets currentLoc
+    modify (\st -> st { currentLoc = loc + 1 })
+    let vtablePtrReg = Register loc (PointerType $ PointerType $ ClassVtableType clsname)
+    let ins = Custom (show vtablePtrReg ++ " = load " ++ show (PointerType $ ClassVtableType clsname) ++ ", " ++ show (PointerType $ PointerType $ ClassVtableType clsname) ++ " " ++ show val ++ "\n")
+    classes' <- asks classes
+    -- this will be a PointerType $ FunctionType retType argTypes
+    let methodPtrType' = getMethodType2 clsname method classes'
+    let methodPtrType = fromMaybe (error ("Internal compiler error: method not found" ++ show classes' ++ "\n " ++ show clsname ++ " " ++ show method)) methodPtrType'
+    let methodIndex' = getMethodIndex clsname method classes'
+    let methodIndex = fromMaybe (error ("Internal compiler error: method not found" ++ show classes' ++ "\n " ++ show clsname ++ " " ++ show method)) methodIndex'
 
---     let clsname = case val of
---             Register _ (PointerType (ClassType clsName)) -> clsName
---             _ -> error "Internal compiler error: trying to call method on non-class"
+    loc2 <- gets currentLoc
+    modify (\st -> st { currentLoc = loc2 + 1 })
+    let methodPtrPtrReg = Register loc2 (PointerType methodPtrType)
+    let ins2 = Custom (show methodPtrPtrReg ++ " = getelementptr inbounds " ++ show (ClassVtableType clsname) ++ ", " ++ show (PointerType $ ClassVtableType clsname) ++ " " ++ show vtablePtrReg ++ ", i32 0, i32 " ++ show methodIndex ++ "\n")
 
---     -- first entry of an object is pointer to vtable
---     loc <- gets currentLoc
---     modify (\st -> st { currentLoc = loc + 1 })
---     let vtablePtrReg = Register loc (PointerType (ClassVtableType clsname))
---     classes' <- classes <$> ask
---     let methodType' = getMethodType2 clsname method classes'
---     let methodType = fromMaybe (error ("Internal compiler error: method not found" ++ show classes' ++ "\n " ++ show clsname ++ " " ++ show method)) methodType'
---     let methodIndex' = getMethodIndex clsname method classes'
---     let methodIndex = fromMaybe (error ("Internal compiler error: method not found" ++ show classes' ++ "\n " ++ show clsname ++ " " ++ show method)) methodIndex'
---     let codeGetVtablePtr = singleton (show vtablePtrReg ++ " = getelementptr " ++ show (ClassType clsname) ++ ", " ++ show (PointerType (ClassType clsname)) ++ " " ++ show val ++ ", i32 0, i32 0\n")
---     loc2 <- gets currentLoc
---     modify (\st -> st { currentLoc = loc2 + 1 })
---     let vtableReg = Register loc2 (ClassVtableType clsname)
---     let codeLoadVtable = singleton (show vtableReg ++ " = load " ++ show (PointerType (ClassVtableType clsname)) ++ ", " ++ show (PointerType (PointerType (ClassVtableType clsname))) ++ " " ++ show vtablePtrReg ++ "\n")
---     loc3 <- gets currentLoc
---     modify (\st -> st { currentLoc = loc3 + 1 })
---     let methodPtrReg = Register loc3 (PointerType methodType)
---     let getMethodPtr = singleton (show methodPtrReg ++ " = getelementptr " ++ show (ClassVtableType clsname) ++ ", " ++ show (PointerType (ClassVtableType clsname)) ++ " " ++ show vtableReg ++ ", i32 0, i32 " ++ show methodIndex ++ "\n")
---     loc4 <- gets currentLoc
---     modify (\st -> st { currentLoc = loc4 + 1 })
---     let methodReg = Register loc4 methodType
---     let loadMethod = singleton (show methodReg ++ " = load " ++ show (PointerType methodType) ++ ", " ++ show (PointerType (PointerType methodType)) ++ " " ++ show methodPtrReg ++ "\n")
---     loc5 <- gets currentLoc
---     modify (\st -> st { currentLoc = loc5 + 1 })
---     let returnRegister = Register loc (PointerType I8Type)
---     env <- ask
---     let methodReturnType = case methodType of
---             FunctionType retType _ -> retType
---             _ -> error "Internal compiler error: method type is not a function"
---     let evalMethod = singleton (show returnRegister ++ " = call " ++ show (PointerType I8Type) ++ " " ++ show methodReg ++ "(" ++ show (PointerType (ClassType clsname)) ++ " " ++ show val ++ ", i8* " ++ show vtablePtrReg ++ ", " ++ argsStr ++ ")\n")
---     return (llvmCode <> llvmCodeArgs <> codeGetVtablePtr <> codeLoadVtable <> getMethodPtr <> loadMethod <> evalMethod, returnRegister)
+    loc3 <- gets currentLoc
+    modify (\st -> st { currentLoc = loc3 + 1 })
+    let methodPtrReg = Register loc3 methodPtrType
+    let ins3 = Custom (show methodPtrReg ++ " = load " ++ show methodPtrType ++ ", " ++ show (PointerType methodPtrType) ++ " " ++ show methodPtrPtrReg ++ "\n")
+
+    let funRetType = case methodPtrType of
+            FunctionType retType _ -> retType
+            _ -> error "Internal compiler error: method pointer type is not a function type"
+
+    loc4 <- gets currentLoc
+    modify (\st -> st { currentLoc = loc4 + 1 })
+    let returnReg = Register loc4 funRetType
+    let ins4 = case funRetType of
+            VoidType -> "call " ++ show funRetType ++ " " ++ show methodPtrReg ++ "(" ++ argsStr ++ ")\n"
+            _ -> show returnReg ++ " = call " ++ show funRetType ++ " " ++ show methodPtrReg ++ "(" ++ argsStr ++ ")\n"
+
+    addToCurrentBlock ins
+    addToCurrentBlock ins2
+    addToCurrentBlock ins3
+    addToCurrentBlock (Custom ins4)
+    return (llvmCode ++ llvmCodeArgs, returnReg)
 
 compileExpr (EApp _ i@(Ident ident) args) = do
     compiledArgs <- traverse compileExpr args
@@ -839,29 +819,37 @@ compileExpr (EAnd _ expr1 _ expr2) = do
     return (llvmCode1 ++ expr1Block : llvmCode2 ++ [expr1BlockEnd, expr2BlockEnd, expr2BlockEndEnd], returnReg)
 
 compileExpr (ENewArr _ type_ expr) = error "Not implemented: new array"
--- compileExpr (ENew _ ident) = do
---     -- construct a default object of class ident
---     classes' <- classes <$> ask
---     let class_ = case Data.Map.lookup ident classes' of
---             Just cls -> cls
---             Nothing -> error $ "Internal compiler error: class " ++ show ident ++ " not found"
---     -- use malloc to allocate memory for the object
---     loc <- gets currentLoc
---     modify (\st -> st { currentLoc = loc + 1 })
---     let callocReg = Register loc (PointerType I8Type)
---     let callocCode = singleton (show callocReg ++ " = call i8*  @__calloc(i32 " ++ show (classSize class_) ++ ")\n")
---     -- bitcast
---     loc2 <- gets currentLoc
---     modify (\st -> st { currentLoc = loc2 + 1 })
---     let bitcastReg = Register loc2 (PointerType (ClassType ident))
---     let bitcastCode = singleton (show bitcastReg ++ " = bitcast i8* " ++ show callocReg ++ " to " ++ show (PointerType (ClassType ident)) ++ "\n")
---     loc3 <- gets currentLoc
---     modify (\st -> st { currentLoc = loc3 + 1 })
---     let vtableReg = Register loc3 (PointerType (ClassVtableType ident))
---     let vtableFetchCode = singleton (show vtableReg ++ " = getelementptr inbounds " ++ show (ClassType ident) ++ ", " ++ show (PointerType (ClassType ident)) ++ " " ++ show bitcastReg ++ ", i32 0, i32 0\n")
---     -- store vtable in allocated object
---     storeCode <- storeVtable ident vtableReg
---     return (callocCode <> bitcastCode <> vtableFetchCode <> storeCode, bitcastReg)
+compileExpr (ENew _ ident@(Ident i)) = do
+    classes' <- asks classes
+    let class_ = case Data.Map.lookup ident classes' of
+            Just cls -> cls
+            Nothing -> error $ "Internal compiler error: class " ++ show ident ++ " not found"
+
+    -- use malloc to allocate memory for the object
+    loc <- gets currentLoc
+    modify (\st -> st { currentLoc = loc + 1 })
+    let callocReg = Register loc (PointerType I8Type)
+    let callocCode = Custom (show callocReg ++ " = call i8*  @__calloc(i32 " ++ show (classSize class_) ++ ")\n")
+
+    -- bitcast
+    loc2 <- gets currentLoc
+    modify (\st -> st { currentLoc = loc2 + 1 })
+    let bitcastReg = Register loc2 (PointerType (ClassType ident))
+    let bitcastCode = Custom (show bitcastReg ++ " = bitcast i8* " ++ show callocReg ++ " to " ++ show (PointerType (ClassType ident)) ++ "\n")
+
+    -- store pointer to correct vtable
+    loc3 <- gets currentLoc
+    modify (\st -> st { currentLoc = loc3 + 1 })
+    let vtablePtrReg = Register loc3 (PointerType $ PointerType (ClassVtableType ident))
+    let vtableFetchCode = Custom (show vtablePtrReg ++ " = getelementptr inbounds " ++ show (ClassType ident) ++ ", " ++ show (PointerType (ClassType ident)) ++ " " ++ show bitcastReg ++ ", i32 0, i32 0\n")
+    
+    -- store vtable in allocated object
+    let storeCode = Custom ("store " ++ show (PointerType (ClassVtableType ident)) ++ " @" ++ i ++ "_vtable, " ++ show (PointerType (PointerType (ClassVtableType ident))) ++ " " ++ show vtablePtrReg ++ "\n")
+    addToCurrentBlock callocCode
+    addToCurrentBlock bitcastCode
+    addToCurrentBlock vtableFetchCode
+    addToCurrentBlock storeCode
+    return ([], bitcastReg)
 
 getVarValue :: Ident -> IM Value
 getVarValue ident = do
