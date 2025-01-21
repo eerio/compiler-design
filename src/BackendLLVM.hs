@@ -366,10 +366,15 @@ instance Compilable ClsMemDeclC where
                 compile funDef
     compile (ClsAttrDecl _ _ items) = pure []
 
+getLabelOfCurrentBlock :: IM Label
+getLabelOfCurrentBlock = do
+    block <- gets currentBlock
+    case label block of
+        Nothing -> error "Internal compiler error: no label"
+        Just l -> return l
+
 instance Compilable FunDefC where
     compile (FunDef _ retType_ (Ident name) args block@(Block _ stmts)) = do
-        -- prevBlock <- gets currentBlock
-
         let retType = llvmType retType_
         let argsStr = Data.List.intercalate ", " $ map (\(Arg _ type_ (Ident i)) -> show (llvmType type_) ++ " %" ++ i) args
         let header = Custom $ unlines [
@@ -384,12 +389,12 @@ instance Compilable FunDefC where
         let newVars = Data.Map.fromList varLocs
         modify (\st -> st { currentLoc = initLoc })
 
+        let headerBlock = BasicBlock Nothing [header] []
 
         lab <- gets currentLabel
         modify (\st -> st { currentLabel = lab + 1 })
         let openingLabel = Label $ "entry" ++ show lab
 
-        let headerBlock = BasicBlock Nothing [header] []
         let openingBlock = BasicBlock (Just openingLabel) [] []
         modify (\st -> st { currentBlock = openingBlock })
 
@@ -474,6 +479,7 @@ instance Show Instruction where
         _ -> error "Internal compiler error: alloca returns a non-pointer"
     show (Custom str) = str
 
+
 instance Compilable Stmt where
     compile (SEmpty _) = pure []
     compile (SBlock _ block) = compile block
@@ -532,15 +538,16 @@ instance Compilable Stmt where
 
         addToCurrentBlock (Custom $ "br i1" ++ show val ++ ", label " ++ condTrueLabel ++ ", label " ++ condFalseLabel ++ "\n")
         condEndBlock <- gets currentBlock
-        modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail condTrueLabel)  [] []})
+        predecessor <- getLabelOfCurrentBlock
+        modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail condTrueLabel)  [] [predecessor]})
         thenBlocks <- compile stmt1
         addToCurrentBlock (Custom $ "br label " ++ endLabel ++ "\n")
         thenEndBlock <- gets currentBlock
-        modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail condFalseLabel) [] []})
+        modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail condFalseLabel) [] [predecessor]})
         elseBlocks <- compile stmt2
         addToCurrentBlock (Custom $ "br label " ++ endLabel ++ "\n")
         elseEndBlock <- gets currentBlock
-        modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail endLabel) [] []})
+        modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail endLabel) [] [Label (tail condTrueLabel), Label (tail condFalseLabel)]})
         return $ condBlocks ++ condEndBlock : thenBlocks ++ thenEndBlock : elseBlocks ++ [elseEndBlock]
 
     compile (SCond _ exp stmt) = do
@@ -553,11 +560,12 @@ instance Compilable Stmt where
 
         addToCurrentBlock (Custom $ "br i1" ++ show val ++ ", label " ++ condTrueLabel ++ ", label " ++ endLabel ++ "\n")
         condEndBlock <- gets currentBlock
-        modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail condTrueLabel) [] []})
+        predecessor <- getLabelOfCurrentBlock
+        modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail condTrueLabel) [] [predecessor]})
         thenBlocks <- compile stmt
         addToCurrentBlock (Custom $ "br label " ++ endLabel ++ "\n")
         thenEndBlock <- gets currentBlock
-        modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail endLabel) [] []})
+        modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail endLabel) [] [Label (tail condTrueLabel), predecessor]})
         return $ condBlocks ++ condEndBlock : thenBlocks ++ [thenEndBlock]
 
     compile (SAss _ lval exp) = do
@@ -573,15 +581,16 @@ instance Compilable Stmt where
         let endLabel = "%loopEnd" ++ show loopLabelN
         addToCurrentBlock (Custom $ "br label " ++ condLabel ++ "\n")
         prevEndBlock <- gets currentBlock
-        modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail condLabel) [] []})
+        predecessor <- getLabelOfCurrentBlock
+        modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail condLabel) [] [predecessor, Label $ tail loopLabel]})
         (condCode, val) <- compileExpr exp
         addToCurrentBlock (Custom $ "br i1 " ++ show val ++ ", label " ++ loopLabel ++ ", label " ++ endLabel ++ "\n")
         condEndBlock <- gets currentBlock
-        modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail loopLabel) [] []})
+        modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail loopLabel) [] [Label $ tail condLabel]})
         body <- compile stmt
         addToCurrentBlock (Custom $ "br label " ++ condLabel ++ "\n")
         bodyEndBlock <- gets currentBlock
-        modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail endLabel) [] []})
+        modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail endLabel) [] [Label $ tail condLabel]})
         return $ prevEndBlock : condCode ++ condEndBlock : body ++ [bodyEndBlock]
 
 getRawString :: Value -> IM ([BasicBlock], Value)
@@ -610,6 +619,35 @@ concatStrings expr1 expr2 = do
         )
 
 compileExpr :: Expr -> IM ([BasicBlock], Value)
+-- compileExpr (EMethodApply _ expr method args) = do
+--     (llvmCode, val) <- compileExpr expr
+--     compiledArgs <- traverse compileExpr args
+--     let llvmCodeArgs = mconcat . map fst $ compiledArgs
+--     let argVals = map snd compiledArgs
+--     let argTypes = map llvmType argVals
+--     let argsStr = Data.List.intercalate ", " $ zipWith (\ argType argVal -> show argType ++ " " ++ show argVal) argTypes argVals
+
+--     let clsname = case val of
+--             Register _ (PointerType (ClassType clsName)) -> clsName
+--             _ -> error "Internal compiler error: trying to call method on non-class"
+
+--     -- first entry of an object is pointer to vtable
+--     loc <- gets currentLoc
+--     modify (\st -> st { currentLoc = loc + 1 })
+--     let vtablePtrReg = Register loc (PointerType (ClassVtableType clsname))
+--     classes' <- asks classes
+--     let methodType' = getMethodType2 clsname method classes'
+--     let methodType = fromMaybe (error ("Internal compiler error: method not found" ++ show classes' ++ "\n " ++ show clsname ++ " " ++ show method)) methodType'
+--     let methodIndex' = getMethodIndex clsname method classes'
+--     let methodIndex = fromMaybe (error ("Internal compiler error: method not found" ++ show classes' ++ "\n " ++ show clsname ++ " " ++ show method)) methodIndex'
+--     let codeGetVtablePtr = singleton (show vtablePtrReg ++ " = getelementptr " ++ show (ClassType clsname) ++ ", " ++ show (PointerType (ClassType clsname)) ++ " " ++ show val ++ ", i32 0, i32 0\n")
+--     loc2 <- gets currentLoc
+--     modify (\st -> st { currentLoc = loc2 + 1 })
+--     let vtableReg = Register loc2 (ClassVtableType clsname)
+--     let codeLoadVtable = singleton (show vtableReg ++ " = load " ++ show (PointerType (ClassVtableType clsname)) ++ ", " ++ show (PointerType (PointerType (ClassVtableType clsname))) ++ " " ++ show vtablePtrReg ++ "\n")
+--     loc3 <- gets currentLoc
+--     modify (\st -> st { currentLoc = loc3 + 1 })
+
 -- compileExpr (EMethodApply _ expr method args) = do
 --     (llvmCode, val) <- compileExpr expr
 --     compiledArgs <- traverse compileExpr args
@@ -780,17 +818,19 @@ compileExpr (EAnd _ expr1 _ expr2) = do
 
     addToCurrentBlock (Custom ("br label " ++ labelStart ++ "\n"))
     expr1Block <- gets currentBlock
-    modify (\st -> st { currentBlock = BasicBlock (Just (Label $ tail labelStart)) [] [] })
+    predecessor <- getLabelOfCurrentBlock
+    modify (\st -> st { currentBlock = BasicBlock (Just (Label $ tail labelStart)) [] [predecessor] })
     addToCurrentBlock (Custom ("br i1 " ++ show val1 ++ ", label " ++ labelCheckSecond ++ ", label " ++ labelEnd ++ "\n"))
     expr1BlockEnd <- gets currentBlock
-    modify (\st -> st { currentBlock = BasicBlock (Just (Label $ tail labelCheckSecond)) [] [] })
+    testBlock <- getLabelOfCurrentBlock
+    modify (\st -> st { currentBlock = BasicBlock (Just (Label $ tail labelCheckSecond)) [] [testBlock] })
     (llvmCode2, val2) <- compileExpr expr2
     addToCurrentBlock (Custom ("br label " ++ labelCheckSecondEnd ++ "\n"))
     expr2BlockEnd <- gets currentBlock
-    modify (\st -> st { currentBlock = BasicBlock (Just (Label $ tail labelCheckSecondEnd)) [] [] })
+    modify (\st -> st { currentBlock = BasicBlock (Just (Label $ tail labelCheckSecondEnd)) [] [Label $ tail labelCheckSecond] })
     addToCurrentBlock (Custom ("br label " ++ labelEnd ++ "\n"))
     expr2BlockEndEnd <- gets currentBlock
-    modify (\st -> st { currentBlock = BasicBlock (Just (Label $ tail labelEnd)) [] [] })
+    modify (\st -> st { currentBlock = BasicBlock (Just (Label $ tail labelEnd)) [] [testBlock, Label $ tail labelCheckSecondEnd] })
 
     resultLoc <- gets currentLoc
     modify (\st -> st { currentLoc = resultLoc + 1 })
