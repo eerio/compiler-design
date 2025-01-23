@@ -1,0 +1,53 @@
+class Super {
+  int x;
+  void setId(int y) { self.x = y; }
+  void printId() {
+    printInt(self.x);
+  }
+
+  void printDoubleId() {
+    printInt( 2 * self.x) ;
+  }
+}
+
+class Derived extends Super {
+  int y;
+  void setOffset(int x) { self.y = x; }
+
+  int getIdPlusOffset() {
+    return self.x + self.y;
+  }
+
+  void printId() {
+    printInt(self.getIdPlusOffset());
+  }
+}
+
+int main() {
+  Super super = new Super;
+  Derived derived = new Derived;
+
+  super.printId();
+  super.printDoubleId();
+  super.setId(10);
+  super.printId();
+  super.printDoubleId();
+
+  derived.printId();
+  derived.printDoubleId();
+
+  derived.setId(20);
+  derived.printId();
+  derived.printDoubleId();
+
+  derived.setOffset(30);
+  derived.printId();
+  derived.printDoubleId();
+
+  Super fake = derived;
+  fake.printId();
+  fake.printDoubleId();
+
+  return 0;
+}
+

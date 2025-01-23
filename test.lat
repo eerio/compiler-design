@@ -1,0 +1,17 @@
+
+int main() {
+  int y = 10;
+
+  int i = 0;
+  while (i < 10) {
+    string y = "abc";
+
+    printString(y);
+    i++;
+  }
+
+  y++;
+  printInt(y);
+
+  return 0;
+}

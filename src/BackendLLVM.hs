@@ -62,6 +62,7 @@ data PrimitiveType =
     | FunctionType PrimitiveType [PrimitiveType]
     | ClassType Ident
     | ClassVtableType Ident
+    | ArrType PrimitiveType
     deriving (Eq)
 
 data Primitive =
@@ -112,6 +113,7 @@ instance LLVMTypeable (Type' BNFC'Position) where
     llvmType (TVoid _) = VoidType
     llvmType (TCls _ (Ident name)) = PointerType $ ClassType (Ident name)
     llvmType (TFun _ retType argTypes) = FunctionType (llvmType retType) (map llvmType argTypes)
+    llvmType (TArr _ type_) = ArrType $ llvmType type_
 
 instance LLVMTypeable (FunDefC' BNFC'Position) where
     llvmType (FunDef _ retType _ args _) = do
@@ -127,6 +129,7 @@ instance Show PrimitiveType where
     show (FunctionType retType argTypes) = show retType ++ " (" ++ Data.List.intercalate ", " (map show argTypes) ++ ")"
     show (ClassType (Ident name)) = "%class." ++ name
     show (ClassVtableType (Ident name)) = "%vtable." ++ name ++ ".type"
+    show (ArrType type_) = show type_ ++ "[]"
 
 data St = St {
     strings :: Map String Integer,
@@ -546,6 +549,21 @@ optionallyBitcast p val = do
 
 
 instance Compilable Stmt where
+    compile (SFor _ typ ident exp stmt) = do
+        let declForVar = SDecl BNFC'NoPosition typ [DeclNoInit BNFC'NoPosition ident]
+        loc <- gets currentLoc
+        modify (\st -> st { currentLoc = loc + 1 })
+        let declIndexIdent = "arrIndex" ++ show loc
+        let tmpArrIdent = "arr" ++ show loc
+        let declArr = SDecl BNFC'NoPosition (TArr BNFC'NoPosition typ) [DeclInit BNFC'NoPosition tmpArrIdent exp]
+        let declInd = SDecl BNFC'NoPosition (TInt BNFC'NoPosition) [DeclInit BNFC'NoPosition declIndexIdent (ELitInt BNFC'NoPosition 0)]
+        let cond = ERel BNFC'NoPosition (EVar BNFC'NoPosition (Ident declIndexIdent)) OpLt (EAttrAccess BNFC'NoPosition (EVar BNFC'NoPosition (Ident tmpArrIdent)) (Ident "length"))
+        let incr = SIncr BNFC'NoPosition (LValIdent BNFC'NoPosition (Ident declIndexIdent))
+        let block = Block BNFC'NoPosition (stmt : [incr])
+        let while = SWhile BNFC'NoPosition cond block
+        let forStmt = Block BNFC'NoPosition [declArr, declInd, while]
+        compile forStmt
+
     compile (SEmpty _) = pure []
     compile (SBlock _ block) = compile block
     compile (SExp _ expr) = fst <$> compileExpr expr

@@ -16,7 +16,7 @@ temp_out_exec=/dev/fd/$TEMP_FILE_FD_3
 # for filename in $(find "$RT"/good "$RT2"/good -name "*.lat"); do
 # for filename in $(find "$RT"/good "$RT2"/good ! -path "$RT/good/virtual/*" ! -path "$RT/good/arrays/*" -name "*.lat"); do
 # lattests/extensions/objects1
-for filename in $(find  lattests/extensions "$RT2"/good/  "$RT"/good/basic ! -path "$RT/good/arrays/*" ! -path "$RT2"/good/daria-error.lat ! -path "lattests/extensions/arrays1/*" -name "*.lat"); do
+for filename in $(find  lattests/extensions "$RT2"/good/  "$RT"/good/basic ! -path "$RT2"/good/daria-error.lat -name "*.lat"); do
   [ -e "$filename" ] || continue
   echo -n "$filename"
 

@@ -1,0 +1,13 @@
+
+
+void printx() {
+  printInt(x);
+}
+
+int main() {
+  {
+    int x = 10;
+    printx();
+  }
+  return 0;
+}
