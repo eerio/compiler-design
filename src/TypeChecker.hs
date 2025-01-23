@@ -612,6 +612,9 @@ instance Checkable Stmt where
     check (SDecl pos (TArr _ (TVoid _)) items) = do
         throwError $ TypeMismatch "Cannot declare an array of voids!" pos (TArr BNFC'NoPosition (TVoid BNFC'NoPosition)) (TArr BNFC'NoPosition (TVoid BNFC'NoPosition))
     
+    -- todo: arr[arr[void]] is also not allowed
+    -- todo: string[] a=1, b={2,3} is allowed or not?
+    
     check (SDecl pos t items) = do
         env <- ask
         ensureClassesExist t
@@ -842,7 +845,7 @@ instance Checkable Expr where
                 _ -> throwError $ TypeMismatch "Cannot concatenate non-string to a string!" pos t1 t2
             _ -> throwError $ TypeMismatch "+ operator only supported for ints and strings!" pos t1 t2
     
-    -- todo: to sie pierdoli w tescie (false && (1 / 0))
+    -- todo: to sie psuje w tescie (false && (1 / 0))
     -- check (EMul pos _ (OpDiv _) (ELitInt _ 0)) = throwError $ TypeMismatch "todo: division by zero" pos (TInt BNFC'NoPosition) (TInt BNFC'NoPosition)
     -- check (EMul pos _ (OpMod _) (ELitInt _ 0)) = throwError $ TypeMismatch "todo: division by zero" pos (TInt BNFC'NoPosition) (TInt BNFC'NoPosition)
     check (EMul pos expr1 op expr2) = do
