@@ -1,0 +1,1912 @@
+From 083e33f6017affceccd3aa2d8704e89c2f309c31 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Pawe=C5=82=20Balawender?= <pbalawender101@gmail.com>
+Date: Fri, 24 Jan 2025 17:29:08 +0100
+Subject: [PATCH] napraw testy varqox
+
+---
+ bad/add_int_overflow.lat                      |    5 -
+ bad/bin_op_and_invalid_laziness.lat           |    5 -
+ bad/bin_op_eq_array_array.lat                 |    8 -
+ bad/bin_op_eq_class_class_side.lat            |    8 -
+ bad/bin_op_eq_class_side_class.lat            |    8 -
+ bad/bin_op_ne_array_array.lat                 |    8 -
+ bad/bin_op_ne_class_class_side.lat            |    8 -
+ bad/bin_op_ne_class_side_class.lat            |    8 -
+ bad/bin_op_or_invalid_laziness.lat            |    5 -
+ bad/div_by_zero.lat                           |    5 -
+ bad/int_negation_overflow.lat                 |    5 -
+ bad/mod_by_zero.lat                           |    5 -
+ bad/return_void_in_func_returning_void.lat    |    6 -
+ bad/shadowing_for_iter.lat                    |    6 -
+ bad/shadowing_for_iter_block.lat              |    7 -
+ good/assign_field_class_arr_elem_null.lat     |    2 +-
+ good/casting.lat                              |    2 +-
+ good/destructors.lat                          | 1180 -----------------
+ good/for_optimizations_testing.lat            |  149 ---
+ good/new_array_length.lat                     |    2 +-
+ good/new_array_subscript.lat                  |    6 +-
+ good/null_cast_to_int_array.lat               |    4 +-
+ good/param_passing_method_array.lat           |    4 +-
+ good/variable_binds_to_argument.lat           |    2 +-
+ good/variable_binds_to_field.lat              |    2 +-
+ good/variable_binds_to_inherited_field.lat    |    2 +-
+ {good => good_weird}/bin_ops.lat              |    0
+ {good => good_weird}/bin_ops.output           |    0
+ {good => good_weird}/comptime_negation.lat    |    0
+ {good => good_weird}/comptime_negation.output |    0
+ {good => good_weird}/comptime_null.lat        |    0
+ {good => good_weird}/comptime_null.output     |    0
+ {good => good_weird}/comptime_string_add.lat  |    0
+ .../comptime_string_add.output                |    0
+ {good => good_weird}/error.exit_code          |    0
+ {good => good_weird}/error.lat                |    0
+ {good => good_weird}/error.output             |    0
+ .../new_class_field_and_method.lat            |    0
+ .../new_class_field_and_method.output         |    0
+ {good => good_weird}/reachability.lat         |    0
+ {good => good_weird}/reachability.output      |    0
+ {good => good_weird}/unary_ops.lat            |    0
+ {good => good_weird}/unary_ops.output         |    0
+ .../var_namespace_vs_function_namespace.lat   |    0
+ ...var_namespace_vs_function_namespace.output |    0
+ .../var_self_comparison_eq.lat                |    0
+ .../var_self_comparison_eq.output             |    0
+ .../var_self_comparison_ne.lat                |    0
+ .../var_self_comparison_ne.output             |    0
+ warnings/array_subscript_null_array.lat       |    2 +-
+ warnings/dead_code_in_while_after_error.lat   |    8 -
+ .../dead_code_in_while_after_while_true.lat   |    8 -
+ warnings/var_self_comparison_eq.lat           |    5 -
+ warnings/var_self_comparison_ne.lat           |    6 -
+ 54 files changed, 14 insertions(+), 1467 deletions(-)
+ delete mode 100644 bad/add_int_overflow.lat
+ delete mode 100644 bad/bin_op_and_invalid_laziness.lat
+ delete mode 100644 bad/bin_op_eq_array_array.lat
+ delete mode 100644 bad/bin_op_eq_class_class_side.lat
+ delete mode 100644 bad/bin_op_eq_class_side_class.lat
+ delete mode 100644 bad/bin_op_ne_array_array.lat
+ delete mode 100644 bad/bin_op_ne_class_class_side.lat
+ delete mode 100644 bad/bin_op_ne_class_side_class.lat
+ delete mode 100644 bad/bin_op_or_invalid_laziness.lat
+ delete mode 100644 bad/div_by_zero.lat
+ delete mode 100644 bad/int_negation_overflow.lat
+ delete mode 100644 bad/mod_by_zero.lat
+ delete mode 100644 bad/return_void_in_func_returning_void.lat
+ delete mode 100644 bad/shadowing_for_iter.lat
+ delete mode 100644 bad/shadowing_for_iter_block.lat
+ delete mode 100644 good/destructors.lat
+ delete mode 100644 good/for_optimizations_testing.lat
+ rename {good => good_weird}/bin_ops.lat (100%)
+ rename {good => good_weird}/bin_ops.output (100%)
+ rename {good => good_weird}/comptime_negation.lat (100%)
+ rename {good => good_weird}/comptime_negation.output (100%)
+ rename {good => good_weird}/comptime_null.lat (100%)
+ rename {good => good_weird}/comptime_null.output (100%)
+ rename {good => good_weird}/comptime_string_add.lat (100%)
+ rename {good => good_weird}/comptime_string_add.output (100%)
+ rename {good => good_weird}/error.exit_code (100%)
+ rename {good => good_weird}/error.lat (100%)
+ rename {good => good_weird}/error.output (100%)
+ rename {good => good_weird}/new_class_field_and_method.lat (100%)
+ rename {good => good_weird}/new_class_field_and_method.output (100%)
+ rename {good => good_weird}/reachability.lat (100%)
+ rename {good => good_weird}/reachability.output (100%)
+ rename {good => good_weird}/unary_ops.lat (100%)
+ rename {good => good_weird}/unary_ops.output (100%)
+ rename {good => good_weird}/var_namespace_vs_function_namespace.lat (100%)
+ rename {good => good_weird}/var_namespace_vs_function_namespace.output (100%)
+ rename {good => good_weird}/var_self_comparison_eq.lat (100%)
+ rename {good => good_weird}/var_self_comparison_eq.output (100%)
+ rename {good => good_weird}/var_self_comparison_ne.lat (100%)
+ rename {good => good_weird}/var_self_comparison_ne.output (100%)
+ delete mode 100644 warnings/dead_code_in_while_after_error.lat
+ delete mode 100644 warnings/dead_code_in_while_after_while_true.lat
+ delete mode 100644 warnings/var_self_comparison_eq.lat
+ delete mode 100644 warnings/var_self_comparison_ne.lat
+
+diff --git a/bad/add_int_overflow.lat b/bad/add_int_overflow.lat
+deleted file mode 100644
+index 72c7de9..0000000
+--- a/bad/add_int_overflow.lat
++++ /dev/null
+@@ -1,5 +0,0 @@
+-// Author: Krzysztof Małysa (2020)
+-int main() {
+-	1073741823 + 1073741825;
+-	return 0;
+-}
+diff --git a/bad/bin_op_and_invalid_laziness.lat b/bad/bin_op_and_invalid_laziness.lat
+deleted file mode 100644
+index ce169a9..0000000
+--- a/bad/bin_op_and_invalid_laziness.lat
++++ /dev/null
+@@ -1,5 +0,0 @@
+-// Author: Krzysztof Małysa (2020)
+-int main() {
+-	(1 / 0 == 42) && false;
+-	return 0;
+-}
+diff --git a/bad/bin_op_eq_array_array.lat b/bad/bin_op_eq_array_array.lat
+deleted file mode 100644
+index a6b5bdc..0000000
+--- a/bad/bin_op_eq_array_array.lat
++++ /dev/null
+@@ -1,8 +0,0 @@
+-// Author: Krzysztof Małysa (2020)
+-class X {}
+-class Y extends X {}
+-
+-int main() {
+-	new X[2] == new Y[2];
+-	return 0;
+-}
+diff --git a/bad/bin_op_eq_class_class_side.lat b/bad/bin_op_eq_class_class_side.lat
+deleted file mode 100644
+index 41cef00..0000000
+--- a/bad/bin_op_eq_class_class_side.lat
++++ /dev/null
+@@ -1,8 +0,0 @@
+-// Author: Krzysztof Małysa (2020)
+-class Y extends X {}
+-class X {}
+-class Z extends X {}
+-int main() {
+-	new Y == new Z;
+-	return 0;
+-}
+diff --git a/bad/bin_op_eq_class_side_class.lat b/bad/bin_op_eq_class_side_class.lat
+deleted file mode 100644
+index 9825c46..0000000
+--- a/bad/bin_op_eq_class_side_class.lat
++++ /dev/null
+@@ -1,8 +0,0 @@
+-// Author: Krzysztof Małysa (2020)
+-class Y extends X {}
+-class X {}
+-class Z extends X {}
+-int main() {
+-	new Z == new Y;
+-	return 0;
+-}
+diff --git a/bad/bin_op_ne_array_array.lat b/bad/bin_op_ne_array_array.lat
+deleted file mode 100644
+index 91d4cc8..0000000
+--- a/bad/bin_op_ne_array_array.lat
++++ /dev/null
+@@ -1,8 +0,0 @@
+-// Author: Krzysztof Małysa (2020)
+-class X {}
+-class Y extends X {}
+-
+-int main() {
+-	new X[2] != new Y[2];
+-	return 0;
+-}
+diff --git a/bad/bin_op_ne_class_class_side.lat b/bad/bin_op_ne_class_class_side.lat
+deleted file mode 100644
+index b0a8663..0000000
+--- a/bad/bin_op_ne_class_class_side.lat
++++ /dev/null
+@@ -1,8 +0,0 @@
+-// Author: Krzysztof Małysa (2020)
+-class Y extends X {}
+-class X {}
+-class Z extends X {}
+-int main() {
+-	new Y != new Z;
+-	return 0;
+-}
+diff --git a/bad/bin_op_ne_class_side_class.lat b/bad/bin_op_ne_class_side_class.lat
+deleted file mode 100644
+index e7a9c7a..0000000
+--- a/bad/bin_op_ne_class_side_class.lat
++++ /dev/null
+@@ -1,8 +0,0 @@
+-// Author: Krzysztof Małysa (2020)
+-class Y extends X {}
+-class X {}
+-class Z extends X {}
+-int main() {
+-	new Z != new Y;
+-	return 0;
+-}
+diff --git a/bad/bin_op_or_invalid_laziness.lat b/bad/bin_op_or_invalid_laziness.lat
+deleted file mode 100644
+index 2cee72a..0000000
+--- a/bad/bin_op_or_invalid_laziness.lat
++++ /dev/null
+@@ -1,5 +0,0 @@
+-// Author: Krzysztof Małysa (2020)
+-int main() {
+-	(1 / 0 == 42) || true;
+-	return 0;
+-}
+diff --git a/bad/div_by_zero.lat b/bad/div_by_zero.lat
+deleted file mode 100644
+index 3d14d50..0000000
+--- a/bad/div_by_zero.lat
++++ /dev/null
+@@ -1,5 +0,0 @@
+-// Author: Krzysztof Małysa (2020)
+-int main() {
+-	82625 / 0;
+-	return 0;
+-}
+diff --git a/bad/int_negation_overflow.lat b/bad/int_negation_overflow.lat
+deleted file mode 100644
+index e994973..0000000
+--- a/bad/int_negation_overflow.lat
++++ /dev/null
+@@ -1,5 +0,0 @@
+-// Author: Krzysztof Małysa (2020)
+-int main() {
+-	int x = -(-2147483647 - 1);
+-	return 0;
+-}
+diff --git a/bad/mod_by_zero.lat b/bad/mod_by_zero.lat
+deleted file mode 100644
+index 261cda7..0000000
+--- a/bad/mod_by_zero.lat
++++ /dev/null
+@@ -1,5 +0,0 @@
+-// Author: Krzysztof Małysa (2020)
+-int main() {
+-	82625 % 0;
+-	return 0;
+-}
+diff --git a/bad/return_void_in_func_returning_void.lat b/bad/return_void_in_func_returning_void.lat
+deleted file mode 100644
+index a5f6f76..0000000
+--- a/bad/return_void_in_func_returning_void.lat
++++ /dev/null
+@@ -1,6 +0,0 @@
+-// Author: Krzysztof Małysa (2020)
+-void foo() {}
+-void test() { return foo(); }
+-int main() {
+-	return 0;
+-}
+diff --git a/bad/shadowing_for_iter.lat b/bad/shadowing_for_iter.lat
+deleted file mode 100644
+index a1058ad..0000000
+--- a/bad/shadowing_for_iter.lat
++++ /dev/null
+@@ -1,6 +0,0 @@
+-// Author: Krzysztof Małysa (2020)
+-int main() {
+-	for (int x : new int[1])
+-		int x;
+-	return 0;
+-}
+\ No newline at end of file
+diff --git a/bad/shadowing_for_iter_block.lat b/bad/shadowing_for_iter_block.lat
+deleted file mode 100644
+index 7abc052..0000000
+--- a/bad/shadowing_for_iter_block.lat
++++ /dev/null
+@@ -1,7 +0,0 @@
+-// Author: Krzysztof Małysa (2020)
+-int main() {
+-	for (int x : new int[1]) {
+-		int x;
+-	}
+-	return 0;
+-}
+\ No newline at end of file
+diff --git a/good/assign_field_class_arr_elem_null.lat b/good/assign_field_class_arr_elem_null.lat
+index 597ca2c..2882b9b 100644
+--- a/good/assign_field_class_arr_elem_null.lat
++++ b/good/assign_field_class_arr_elem_null.lat
+@@ -6,7 +6,7 @@ class C {
+ }
+ 
+ void tester() {
+-	(new C[1])[2].fld = null;
++	(new C[1])[2].fld = (Y)null;
+ }
+ int main() {
+ 	return 0;
+diff --git a/good/casting.lat b/good/casting.lat
+index d8a223e..8d1412b 100644
+--- a/good/casting.lat
++++ b/good/casting.lat
+@@ -9,6 +9,6 @@ int main() {
+ 	int[][] b1 = null, b2 = (int[][])null;
+ 	X x1 = null, x2 = (X)null, x3 = (Y)null, x4 = (Z)null;
+ 	Y y1 = null, y2 = (Y) null;
+-	Z z1 = null, z2 = (Z) /* some comment */ null;
++	Z z1 = null, z2 = (Z) null;
+ 	return 0;
+ }
+diff --git a/good/destructors.lat b/good/destructors.lat
+deleted file mode 100644
+index 2d27a3d..0000000
+--- a/good/destructors.lat
++++ /dev/null
+@@ -1,1180 +0,0 @@
+-// Author: Krzysztof Małysa (2021)
+-class XX {
+-	int i;
+-	string a;
+-	string bb;
+-	int j;
+-
+-	XX make_self() {
+-		XX x = self;
+-		return x;
+-	}
+-}
+-
+-class YY extends XX {
+-	string o, x;
+-}
+-
+-void test() {
+-	int x'iaaq'a = 42;
+-	string foo, bar = "bla bla bla";
+-	XX x, y = null, z = (XX)null;
+-	XX xx = new XX;
+-	YY yy = new YY;
+-	YY[] ayy = new YY[42];
+-	YY[] byy = new YY[42];
+-	ayy[41];
+-	xx.i;
+-
+-	ayy[27] = null;
+-	xx.i = 188;
+-
+-	xx.a = "ho ho ho";
+-
+-	x'iaaq'a = 77;
+-	x = new XX;
+-
+-	x.j = (new int[888]).length;
+-
+-	(new XX).i = x.j;
+-
+-	(new YY).i = (new int[33]).length;
+-
+-	int o = 0;
+-
+-	string str = xx.a;
+-	"bla bla bla";
+-	new XX;
+-	(new XX[555]).length;
+-}
+-
+-void xx() {
+-	YY[] yy = new YY[108];
+-	yy[1] = new YY;
+-	yy[10] = new YY;
+-	yy[13] = new YY;
+-	yy[1].a = yy[13].bb;
+-
+-	yy[10].i++;
+-	yy[10].j--;
+-}
+-
+-void yy() {
+-	(new int[123])[32]++;
+-	(new YY[321])[44] = new YY;
+-}
+-
+-void t2() {
+-	YY yy = new YY;
+-	string s = yy.a;
+-	string s2 = (new YY).bb;
+-}
+-
+-class Z1 {
+-	YY y;
+-	YY get_y1() {
+-		YY yy = y;
+-		return yy;
+-	}
+-
+-	YY get_y2() {
+-		return y;
+-	}
+-
+-	YY get_y3() {
+-		YY yy = self.y;
+-		return yy;
+-	}
+-
+-	YY get_y4() {
+-		return self.y;
+-	}
+-}
+-
+-void check_def_uninit() {
+-	int a, b;
+-	string c, d;
+-	boolean e, f;
+-	YY g, h, i;
+-	YY[] j, k, l;
+-}
+-
+-void check_def_init() {
+-	int a = 1, b = 2;
+-	string c = "abc", d = "";
+-	boolean e = false, f = true;
+-	YY g = null, h = (YY)null, i = new YY;
+-	YY[] j = null, k = (YY[])null, l = new YY[42];
+-	string s = "x", ss = s;
+-	s = "";
+-	if (ss != "x") error();
+-}
+-
+-void check_int_neg() {
+-	int a = -1, b = -a;
+-	int c = (new YY[4]).length;
+-	int d = 42 * 8;
+-}
+-
+-class A {
+-	int i;
+-	boolean b;
+-	string s;
+-	A[] a;
+-	A c;
+-}
+-
+-class B extends A {
+-	int bb;
+-}
+-
+-void check_bool_not() {
+-	A a = new A;
+-	a.b = !a.b;
+-	a.b = !!a.b;
+-	a.b = !!!a.b;
+-	a.i = 4;
+-	a.b = !(a.b || !a.b);
+-	// a.b = !(a.b && a.i == 4);
+-	a.b = !(false || true);
+-
+-	a.b = !((new A).b || true);
+-	a.b = !((new A).b || false);
+-	a.b = !(true || (new A).b);
+-	a.b = !(false || (new A).b);
+-	a.b = !((new A).b || (new A).b);
+-
+-	a.b = !(false && true);
+-	a.b = !((new A).b && false);
+-	a.b = !((new A).b && true);
+-	a.b = !(false && (new A).b);
+-	a.b = !(true && (new A).b);
+-	a.b = !((new A).b && (new A).b);
+-}
+-
+-void check_bool_bin_ops() {
+-	A a = new A;
+-	a.b = a.b || !a.b;
+-	// a.b = a.b && a.i == 4;
+-	a.b = false || true;
+-
+-	a.b = (new A).b || true;
+-	a.b = (new A).b || false;
+-	a.b = true || (new A).b;
+-	a.b = false || (new A).b;
+-	a.b = (new A).b || (new A).b;
+-
+-	a.b = false && true;
+-	a.b = (new A).b && true;
+-	a.b = (new A).b && false;
+-	a.b = false && (new A).b;
+-	a.b = true && (new A).b;
+-	a.b = (new A).b && (new A).b;
+-}
+-
+-void check_add_int() {
+-	int a = 42, b = 8;
+-	int c = a + b;
+-	c = c + c;
+-	c = (new int[46]).length + b;
+-	c = a + (new int[86]).length;
+-	c = (new int[182]).length + (new int[a]).length;
+-	c = 6521 + 517;
+-}
+-
+-void check_add_str() {
+-	string a = "abc", b = "xyz", c;
+-	c = a + b;
+-	c = c + c;
+-	c = "hoho" + b;
+-	c = a + "hoho";
+-	c = (new A).s + (new A).s;
+-	c = "bla" + "alb";
+-}
+-
+-void check_sub_int() {
+-	int a = 42, b = 8;
+-	int c = a - b;
+-	c = c - c;
+-	c = (new int[46]).length - b;
+-	c = a - (new int[86]).length;
+-	c = (new int[182]).length - (new int[a]).length;
+-	c = 6521 - 517;
+-}
+-
+-void check_mul_int() {
+-	int a = 42, b = 8;
+-	int c = a * b;
+-	c = c * c;
+-	c = (new int[46]).length * b;
+-	c = a * (new int[86]).length;
+-	c = (new int[182]).length * (new int[a]).length;
+-	c = 6521 * 517;
+-}
+-
+-void check_div_int() {
+-	int a = 42, b = 8;
+-	int c = a / b;
+-	c = c / c;
+-	c = (new int[46]).length / b;
+-	c = a / (new int[86]).length;
+-	c = (new int[182]).length / (new int[a]).length;
+-	c = 6521 / 517;
+-}
+-
+-void check_mod_int() {
+-	int a = 42, b = 8;
+-	int c = a % b;
+-	c = c % c;
+-	c = (new int[46]).length % b;
+-	c = a % (new int[86]).length;
+-	c = (new int[182]).length % (new int[a]).length;
+-	c = 6521 % 517;
+-}
+-
+-void check_lth_int() {
+-	int a = 42, b = 8;
+-	boolean c = a < b;
+-	c = !(a < b);
+-	c = a < a;
+-	c = (new int[46]).length < b;
+-	c = a < (new int[86]).length;
+-	c = (new int[182]).length < (new int[a]).length;
+-	c = 6521 < 517;
+-}
+-
+-void check_lth_str() {
+-	string a = "abc", b = "xyz";
+-	boolean c = a < b;
+-	c = !(a < b);
+-	c = a < a;
+-	c = "hoho" < b;
+-	c = a < "hoho";
+-	c = (new A).s < (new A).s;
+-	c = "bla" < "alb";
+-}
+-
+-void check_le_int() {
+-	int a = 42, b = 8;
+-	boolean c = a <= b;
+-	c = !(a <= b);
+-	c = a <= a;
+-	c = (new int[46]).length <= b;
+-	c = a <= (new int[86]).length;
+-	c = (new int[182]).length <= (new int[a]).length;
+-	c = 6521 <= 517;
+-}
+-
+-void check_le_str() {
+-	string a = "abc", b = "xyz";
+-	boolean c = a <= b;
+-	c = !(a <= b);
+-	c = a <= a;
+-	c = "hoho" <= b;
+-	c = a <= "hoho";
+-	c = (new A).s <= (new A).s;
+-	c = "bla" <= "alb";
+-}
+-
+-void check_gth_int() {
+-	int a = 42, b = 8;
+-	boolean c = a > b;
+-	c = !(a > b);
+-	c = a > a;
+-	c = (new int[46]).length > b;
+-	c = a > (new int[86]).length;
+-	c = (new int[182]).length > (new int[a]).length;
+-	c = 6521 > 517;
+-}
+-
+-void check_gth_str() {
+-	string a = "abc", b = "xyz";
+-	boolean c = a > b;
+-	c = !(a > b);
+-	c = a > a;
+-	c = "hoho" > b;
+-	c = a > "hoho";
+-	c = (new A).s > (new A).s;
+-	c = "bla" > "alb";
+-}
+-
+-void check_ge_int() {
+-	int a = 42, b = 8;
+-	boolean c = a >= b;
+-	c = !(a >= b);
+-	c = a >= a;
+-	c = (new int[46]).length >= b;
+-	c = a >= (new int[86]).length;
+-	c = (new int[182]).length >= (new int[a]).length;
+-	c = 6521 >= 517;
+-}
+-
+-void check_ge_str() {
+-	string a = "abc", b = "xyz";
+-	boolean c = a >= b;
+-	c = !(a >= b);
+-	c = a >= a;
+-	c = "hoho" >= b;
+-	c = a >= "hoho";
+-	c = (new A).s >= (new A).s;
+-	c = "bla" >= "alb";
+-}
+-
+-void check_eq_int() {
+-	int a = 42, b = 8;
+-	boolean c = a == b;
+-	c = !(a == b);
+-	c = a == a;
+-	c = (new int[46]).length == b;
+-	c = a == (new int[86]).length;
+-	c = (new int[182]).length == (new int[a]).length;
+-	c = 6521 == 517;
+-}
+-
+-void check_eq_str() {
+-	string a = "abc", b = "xyz";
+-	boolean c = a == b;
+-	c = !(a == b);
+-	c = a == a;
+-	c = "hoho" == b;
+-	c = a == "hoho";
+-	c = (new A).s == (new A).s;
+-	c = "bla" == "alb";
+-}
+-
+-void check_eq_bool() {
+-	boolean a = true, b = false;
+-	boolean c = a == b;
+-	c = !(a == b);
+-	c = a == a;
+-	c = (new A).b == b;
+-	c = a == (new A).b;
+-	c = (new A).b == (new A).b;
+-	c = true == false;
+-}
+-
+-void check_eq_null() {
+-	boolean c = null == null;
+-	c = !(null == null);
+-}
+-
+-void check_eq_arr() {
+-	A[] a = new A[142], b = new A[312];
+-	boolean c = a == b;
+-	c = !(a == b);
+-	c = a == a;
+-	c = (new A).a == b;
+-	c = a == (new A).a;
+-	c = (new A).a == (new A).a;
+-}
+-
+-void check_eq_arr_null() {
+-	A[] a = new A[142];
+-	boolean c = a == null;
+-	c = !(a == null);
+-	c = null == a;
+-	c = (new A).a == null;
+-	c = null == (new A).a;
+-}
+-
+-void check_eq_class() {
+-	A a = new A, b = new A;
+-	boolean c = a == b;
+-	c = !(a == b);
+-	c = a == a;
+-	c = (new A).c == b;
+-	c = a == (new A).c;
+-	c = (new A).c == (new A).c;
+-	c = new A == new A;
+-}
+-
+-void check_eq_class_null() {
+-	A a = new A;
+-	boolean c = a == null;
+-	c = !(a == null);
+-	c = null == a;
+-	c = (new A).c == null;
+-	c = null == (new A).c;
+-	c = null == new A;
+-	c = new A == null;
+-}
+-
+-void check_eq_classes_hierarchy() {
+-	A a = new A;
+-	B b = new B;
+-	boolean c = a == b;
+-	c = !(a == b);
+-	c = (new A).c == b;
+-	c = b == (new A).c;
+-	c = (new A).c == new B;
+-	c = new B == (new A).c;
+-	c = new A == b;
+-	c = a == new B;
+-	c = new A == new B;
+-	c = new B == new A;
+-}
+-
+-void check_ne_int() {
+-	int a = 42, b = 8;
+-	boolean c = a != b;
+-	c = !(a != b);
+-	c = a != a;
+-	c = (new int[46]).length != b;
+-	c = a != (new int[86]).length;
+-	c = (new int[182]).length != (new int[a]).length;
+-	c = 6521 != 517;
+-}
+-
+-void check_ne_str() {
+-	string a = "abc", b = "xyz";
+-	boolean c = a != b;
+-	c = !(a != b);
+-	c = a != a;
+-	c = "hoho" != b;
+-	c = a != "hoho";
+-	c = (new A).s != (new A).s;
+-	c = "bla" != "alb";
+-}
+-
+-void check_ne_bool() {
+-	boolean a = true, b = false;
+-	boolean c = a != b;
+-	c = !(a != b);
+-	c = a != a;
+-	c = (new A).b != b;
+-	c = a != (new A).b;
+-	c = (new A).b != (new A).b;
+-	c = true != false;
+-}
+-
+-void check_ne_null() {
+-	boolean c = null != null;
+-	c = !(null != null);
+-}
+-
+-void check_ne_arr() {
+-	A[] a = new A[142], b = new A[312];
+-	boolean c = a != b;
+-	c = !(a != b);
+-	c = a != a;
+-	c = (new A).a != b;
+-	c = a != (new A).a;
+-	c = (new A).a != (new A).a;
+-}
+-
+-void check_ne_arr_null() {
+-	A[] a = new A[142];
+-	boolean c = a != null;
+-	c = !(a != null);
+-	c = null != a;
+-	c = (new A).a != null;
+-	c = null != (new A).a;
+-}
+-
+-void check_ne_class() {
+-	A a = new A, b = new A;
+-	boolean c = a != b;
+-	c = !(a != b);
+-	c = a != a;
+-	c = (new A).c != b;
+-	c = a != (new A).c;
+-	c = (new A).c != (new A).c;
+-	c = new A != new A;
+-}
+-
+-void check_ne_class_null() {
+-	A a = new A;
+-	boolean c = a != null;
+-	c = !(a != null);
+-	c = null != a;
+-	c = (new A).c != null;
+-	c = null != (new A).c;
+-	c = null != new A;
+-	c = new A != null;
+-}
+-
+-void check_ne_classes_hierarchy() {
+-	A a = new A;
+-	B b = new B;
+-	boolean c = a != b;
+-	c = !(a != b);
+-	c = (new A).c != b;
+-	c = b != (new A).c;
+-	c = (new A).c != new B;
+-	c = new B != (new A).c;
+-	c = new A != b;
+-	c = a != new B;
+-	c = new A != new B;
+-	c = new B != new A;
+-}
+-
+-string get_str() {
+-	return "abc";
+-}
+-
+-string fuse(string a, string b) {
+-	return a + b;
+-}
+-
+-class C {
+-	string mfuse(string a, string b) {
+-		return a + b;
+-	}
+-
+-	void check_mcall_as_fcall() {
+-		mfuse(get_str(), get_str());
+-		string s = mfuse(get_str(), get_str());
+-	}
+-}
+-
+-void check_fcall() {
+-	printInt(142);
+-	printString("abc");
+-	get_str();
+-	printString(get_str());
+-	fuse("abc", "cde");
+-	string s = fuse("abc", "cde");
+-	(new C).check_mcall_as_fcall();
+-}
+-
+-class D {
+-	void noop() {}
+-
+-	string mfuse(string a, string b) {
+-		return a + b;
+-	}
+-
+-	int madd(int a, int b) {
+-		return a + b;
+-	}
+-
+-	void check_mcall_as_mcall() {
+-		self.noop();
+-		self.mfuse("abc", "cde");
+-		string s = self.mfuse("abc", "cde");
+-		int[] arr = new int[168];
+-		int x = self.madd(arr.length, 42);
+-	}
+-}
+-
+-void check_mcall() {
+-	D d = new D;
+-	d.noop();
+-	d = new D;
+-	d.noop();
+-	(new D).noop();
+-	d.mfuse("abc", "cde");
+-	(new D).mfuse("abc", "cde");
+-	string s = d.mfuse("abc", "cde");
+-	int[] arr = new int[168];
+-	int x = d.madd(arr.length, 42);
+-	d.check_mcall_as_mcall();
+-}
+-
+-void check_string_arr() {
+-	new string[42];
+-	string[] a = new string[108];
+-	a[42] = "bla bla";
+-}
+-
+-void check_string_arr_arr() {
+-	string[][] a = new string[][42];
+-	a[2] = new string[3];
+-	a[2][1] = "abc";
+-	a[16] = new string[4];
+-	a[1] = new string[5];
+-	a[2] = new string[6];
+-	a[2][1] = "cde";
+-	a[16][2] = "efg";
+-	a[16][3] = "hij";
+-
+-	for (string[] b : a) {
+-		if (b != null) {
+-			printString("[[[");
+-			for (string s : b) {
+-				printString(s);
+-			}
+-			printString("]]]");
+-		}
+-	}
+-}
+-
+-class Whiler {
+-	int i;
+-
+-	boolean next() {
+-		i++;
+-		return i < 10;
+-	}
+-}
+-
+-void check_while() {
+-	Whiler w = new Whiler;
+-	string s = "xxx";
+-	while (w.next())
+-		string s = "bla bla";
+-	w = new Whiler;
+-	while (w.next()) {
+-		string s = "bla bla";
+-	}
+-	while (false) {
+-		error();
+-	}
+-	int i = 0;
+-	while (true) {
+-		i++;
+-		if (i > 42) {
+-			printString("while: OK");
+-			return;
+-		}
+-	}
+-}
+-
+-void check_for() {
+-	string[] arr = new string[42];
+-	for (string str : arr) {
+-		printString(str);
+-		string x = str + "bla";
+-		printString(x);
+-	}
+-	for (string str : arr)
+-		int arr;
+-	// nasty case
+-	for (string str : arr) {
+-		arr = null;
+-	}
+-	for (string str : new string[4]) {
+-		str = "bla bla" + str;
+-		printString(str);
+-	}
+-	int sum = 0;
+-	for (int x : new int[42]) {
+-		sum = sum + x;
+-	}
+-	if (sum != 0) error();
+-	arr = new string[88];
+-	for (string s : arr) {
+-		return;
+-	}
+-}
+-
+-void check_if() {
+-	if ("x" + "y" == "xy") {
+-		printString("good");
+-	}
+-	if (true) {
+-		printString("good");
+-	} else {
+-		printString("bad");
+-	}
+-	if (false) {
+-		printString("bad");
+-	} else {
+-		printString("good");
+-	}
+-
+-	if (fuse("a", "b") == "ab") {
+-		printString("good");
+-	}
+-
+-	if (fuse("a", "b") == "ab") {
+-		printString("good");
+-	} else {
+-		printString("bad");
+-	}
+-
+-	if (fuse("a", "b") != "ab") {
+-		printString("good");
+-	} else {
+-		printString("bad");
+-	}
+-}
+-
+-void check_void_return1() {
+-	string a = "abc";
+-	{
+-		string a = "cde";
+-		{
+-			string b = "efg";
+-			return;
+-		}
+-	}
+-}
+-
+-void check_void_return2() {
+-	string a = "abc";
+-	{
+-		string a = "cde";
+-		{
+-			string b = "efg";
+-			while (true) {
+-				string a = "xxx";
+-				return;
+-				printInt(42);
+-			}
+-			printInt(42);
+-		}
+-		printInt(42);
+-	}
+-	printInt(42);
+-}
+-
+-void check_void_return3() {
+-	string a = "abc";
+-	{
+-		string a = "cde";
+-		{
+-			string b = "efg";
+-			while (true) {
+-				string a = "xxx";
+-				for (string x : new string[42]) {
+-					string y = "bla";
+-					return;
+-					printInt(42);
+-				}
+-				printInt(42);
+-			}
+-			printInt(42);
+-		}
+-		printInt(42);
+-	}
+-	printInt(42);
+-}
+-
+-void check_void_return4(int which) {
+-	string a = "abc";
+-	{
+-		string a = "cde";
+-		{
+-			string b = "efg";
+-			while (true) {
+-				string a = "xxx";
+-				for (string x : new string[42]) {
+-					string y = "bla";
+-					if (which == 1) {
+-						printInt(1);
+-						return;
+-					} else {
+-						printInt(2);
+-						return;
+-					}
+-					printInt(42);
+-				}
+-				printInt(42);
+-			}
+-			printInt(42);
+-		}
+-		printInt(42);
+-	}
+-	printInt(42);
+-}
+-
+-void check_void_return() {
+-	check_void_return1();
+-	check_void_return2();
+-	check_void_return3();
+-	check_void_return4(1);
+-	check_void_return4(2);
+-}
+-
+-string check_return1() {
+-	string a = "abc";
+-	{
+-		string a = "cde";
+-		{
+-			string b = "efg";
+-			return "bla";
+-		}
+-	}
+-}
+-
+-string check_return2() {
+-	string a = "abc";
+-	{
+-		string a = "cde";
+-		{
+-			string b = "efg";
+-			while (true) {
+-				string a = "xxx";
+-				return "bla";
+-				printInt(42);
+-			}
+-			printInt(42);
+-		}
+-		printInt(42);
+-	}
+-	printInt(42);
+-}
+-
+-string check_return3() {
+-	string a = "abc";
+-	{
+-		string a = "cde";
+-		{
+-			string b = "efg";
+-			while (true) {
+-				string a = "xxx";
+-				for (string x : new string[42]) {
+-					string y = "bla";
+-					return "bla";
+-					printInt(42);
+-				}
+-				printInt(42);
+-			}
+-			printInt(42);
+-		}
+-		printInt(42);
+-	}
+-	printInt(42);
+-}
+-
+-string check_return4(int which) {
+-	string a = "abc";
+-	{
+-		string a = "cde";
+-		{
+-			string b = "efg";
+-			while (true) {
+-				string a = "xxx";
+-				for (string x : new string[42]) {
+-					string y = "bla";
+-					if (which == 1) {
+-						printInt(1);
+-						return "bla";
+-					} else {
+-						printInt(2);
+-						return "bla";
+-					}
+-					printInt(42);
+-				}
+-				printInt(42);
+-			}
+-			printInt(42);
+-		}
+-		printInt(42);
+-	}
+-	printInt(42);
+-}
+-
+-string check_return5(int which) {
+-	string a = "abc";
+-	if (which == 1)
+-		return a;
+-	{
+-		string b = "cde";
+-		if (which == 2)
+-			return b;
+-		int xx = 42;
+-		while (xx > 0) {
+-			xx--;
+-			string c = "xxx";
+-			if (which == 3)
+-				return c;
+-			for (string x : new string[42]) {
+-				if (which == 4)
+-					return x;
+-				string y = "yyy";
+-				if (which == 5)
+-					return y;
+-				if (which == 6)
+-					return x;
+-			}
+-			if (which == 7)
+-				return c;
+-		}
+-		if (which == 8)
+-			return b;
+-	}
+-	if (which == 9)
+-		return a;
+-	return "?";
+-}
+-
+-string check_return6() {
+-	string x = "test";
+-	if (false) {
+-		return "42";
+-	}
+-	if (true) {
+-		return "86";
+-	}
+-}
+-
+-void assert(boolean b) {
+-	if (!b) error();
+-}
+-
+-void check_return() {
+-	assert(check_return1() == "bla");
+-	assert(check_return2() == "bla");
+-	assert(check_return3() == "bla");
+-	assert(check_return4(1) == "bla");
+-	assert(check_return4(2) == "bla");
+-	assert(check_return5(0) == "?");
+-	assert(check_return5(1) == "abc");
+-	assert(check_return5(2) == "cde");
+-	assert(check_return5(3) == "xxx");
+-	assert(check_return5(4) == "");
+-	assert(check_return5(5) == "yyy");
+-	assert(check_return5(6) == "");
+-	assert(check_return5(7) == "xxx");
+-	assert(check_return5(8) == "cde");
+-	assert(check_return5(9) == "abc");
+-	assert(check_return5(10) == "?");
+-	assert(check_return6() == "86");
+-}
+-
+-class ParamPassing {
+-	void check_param_passing_int_impl(int a, int b) {
+-		a = -164365236;
+-		assert(a == -164365236);
+-	}
+-
+-	void check_param_passing_bool_impl(boolean a, boolean b) {
+-		a = true;
+-		assert(a);
+-	}
+-
+-	void check_param_passing_string_impl(string a, string b) {
+-		a = "xxx";
+-		assert(a == "xxx");
+-	}
+-
+-	void check_param_passing_class_impl(A a, A b) {
+-		A x = new A;
+-		a = x;
+-		a.s = "a b c";
+-		assert(a == x);
+-		assert(a.s == x.s);
+-		assert(a.s == "a b c");
+-		assert(x.s == "a b c");
+-	}
+-
+-	void check_param_passing_array_impl(string[] a, string[] b) {
+-		string[] x = new string[8];
+-		a = x;
+-		a[3] = "x y z";
+-		assert(a == x);
+-		assert(a[3] == x[3]);
+-		assert(a[3] == "x y z");
+-		assert(x[3] == "x y z");
+-	}
+-}
+-
+-void check_param_passing_int_impl(int a, int b) {
+-	a = -164365236;
+-	assert(a == -164365236);
+-}
+-
+-void check_param_passing_bool_impl(boolean a, boolean b) {
+-	a = true;
+-	assert(a);
+-}
+-
+-void check_param_passing_string_impl(string a, string b) {
+-	a = "xxx";
+-	assert(a == "xxx");
+-}
+-
+-void check_param_passing_class_impl(A a, A b) {
+-	A x = new A;
+-	a = x;
+-	a.s = "a b c";
+-	assert(a == x);
+-	assert(a.s == x.s);
+-	assert(a.s == "a b c");
+-	assert(x.s == "a b c");
+-}
+-
+-void check_param_passing_array_impl(string[] a, string[] b) {
+-	string[] x = new string[8];
+-	a = x;
+-	a[3] = "x y z";
+-	assert(a == x);
+-	assert(a[3] == x[3]);
+-	assert(a[3] == "x y z");
+-	assert(x[3] == "x y z");
+-}
+-
+-void check_param_passing_int() {
+-	{
+-		check_param_passing_int_impl(4, 8);
+-		int x = 628;
+-		check_param_passing_int_impl(x, 86);
+-		assert(x == 628);
+-		check_param_passing_int_impl(13568, x);
+-		assert(x == 628);
+-	}
+-	{
+-		ParamPassing pp = new ParamPassing;
+-		pp.check_param_passing_int_impl(4, 8);
+-		int x = 628;
+-		pp.check_param_passing_int_impl(x, 86);
+-		assert(x == 628);
+-		pp.check_param_passing_int_impl(13568, x);
+-		assert(x == 628);
+-	}
+-}
+-
+-void check_param_passing_bool() {
+-	{
+-		check_param_passing_bool_impl(true, false);
+-		boolean x = false;
+-		check_param_passing_bool_impl(x, true);
+-		assert(x == false);
+-		check_param_passing_bool_impl(false, x);
+-		assert(x == false);
+-	}
+-	{
+-		ParamPassing pp = new ParamPassing;
+-		pp.check_param_passing_bool_impl(true, false);
+-		boolean x = false;
+-		pp.check_param_passing_bool_impl(x, true);
+-		assert(x == false);
+-		pp.check_param_passing_bool_impl(false, x);
+-		assert(x == false);
+-	}
+-}
+-
+-void check_param_passing_string() {
+-	{
+-		check_param_passing_string_impl("ooo", "...");
+-		string s = "hhh";
+-		check_param_passing_string_impl(s, ",,,");
+-		assert(s == "hhh");
+-		check_param_passing_string_impl("asuth", s);
+-		assert(s == "hhh");
+-	}
+-	{
+-		ParamPassing pp = new ParamPassing;
+-		pp.check_param_passing_string_impl("ooo", "...");
+-		string s = "hhh";
+-		pp.check_param_passing_string_impl(s, ",,,");
+-		assert(s == "hhh");
+-		pp.check_param_passing_string_impl("asuth", s);
+-		assert(s == "hhh");
+-	}
+-}
+-
+-void check_param_passing_class() {
+-	{
+-		check_param_passing_class_impl(null, null);
+-		check_param_passing_class_impl(null, new A);
+-		check_param_passing_class_impl(new A, null);
+-		check_param_passing_class_impl(new A, new A);
+-		A x = new A, y = x;
+-		check_param_passing_class_impl(x, new A);
+-		assert(x == y);
+-		assert(x.s == "");
+-		check_param_passing_class_impl(new A, x);
+-		assert(x == y);
+-		assert(x.s == "");
+-	}
+-	{
+-		ParamPassing pp = new ParamPassing;
+-		pp.check_param_passing_class_impl(null, null);
+-		pp.check_param_passing_class_impl(null, new A);
+-		pp.check_param_passing_class_impl(new A, null);
+-		pp.check_param_passing_class_impl(new A, new A);
+-		A x = new A, y = x;
+-		pp.check_param_passing_class_impl(x, new A);
+-		assert(x == y);
+-		assert(x.s == "");
+-		pp.check_param_passing_class_impl(new A, x);
+-		assert(x == y);
+-		assert(x.s == "");
+-	}
+-}
+-
+-void check_param_passing_array() {
+-	{
+-		check_param_passing_array_impl(null, null);
+-		check_param_passing_array_impl(null, new string[22]);
+-		check_param_passing_array_impl(new string[22], null);
+-		check_param_passing_array_impl(new string[22], new string[22]);
+-		string[] x = new string[22], y = x;
+-		check_param_passing_array_impl(x, new string[22]);
+-		assert(x == y);
+-		assert(x[3] == "");
+-		check_param_passing_array_impl(new string[22], x);
+-		assert(x == y);
+-		assert(x[3] == "");
+-	}
+-	{
+-		ParamPassing pp = new ParamPassing;
+-		pp.check_param_passing_array_impl(null, null);
+-		pp.check_param_passing_array_impl(null, new string[22]);
+-		pp.check_param_passing_array_impl(new string[22], null);
+-		pp.check_param_passing_array_impl(new string[22], new string[22]);
+-		string[] x = new string[22], y = x;
+-		pp.check_param_passing_array_impl(x, new string[22]);
+-		assert(x == y);
+-		assert(x[3] == "");
+-		pp.check_param_passing_array_impl(new string[22], x);
+-		assert(x == y);
+-		assert(x[3] == "");
+-	}
+-}
+-
+-void check_param_passing() {
+-	check_param_passing_int();
+-	check_param_passing_bool();
+-	check_param_passing_string();
+-	check_param_passing_class();
+-	check_param_passing_array();
+-}
+-
+-int main() {
+-	test();
+-	xx();
+-	yy();
+-	t2();
+-	check_def_uninit();
+-	check_def_init();
+-	check_int_neg();
+-	check_bool_not();
+-	check_bool_bin_ops();
+-	check_add_int();
+-	check_add_str();
+-	check_sub_int();
+-	check_mul_int();
+-	check_div_int();
+-	check_mod_int();
+-	check_lth_int();
+-	check_lth_str();
+-	check_le_int();
+-	check_le_str();
+-	check_gth_int();
+-	check_gth_str();
+-	check_ge_int();
+-	check_ge_str();
+-	check_eq_int();
+-	check_eq_str();
+-	check_eq_bool();
+-	check_eq_null();
+-	check_eq_arr();
+-	check_eq_arr_null();
+-	check_eq_class();
+-	check_eq_class_null();
+-	check_eq_classes_hierarchy();
+-	check_ne_int();
+-	check_ne_str();
+-	check_ne_bool();
+-	check_ne_null();
+-	check_ne_arr();
+-	check_ne_arr_null();
+-	check_ne_class();
+-	check_ne_class_null();
+-	check_ne_classes_hierarchy();
+-	check_fcall();
+-	check_mcall();
+-	check_string_arr();
+-	check_string_arr_arr();
+-	check_while();
+-	check_for();
+-	check_if();
+-	check_void_return();
+-	check_return();
+-	check_param_passing();
+-	return 0;
+-}
+diff --git a/good/for_optimizations_testing.lat b/good/for_optimizations_testing.lat
+deleted file mode 100644
+index b8f293f..0000000
+--- a/good/for_optimizations_testing.lat
++++ /dev/null
+@@ -1,149 +0,0 @@
+-// Author: Krzysztof Małysa (2021)
+-
+-void printBool(boolean b) {
+-    if (b) printString("true");
+-    else printString("false");
+-}
+-
+-int main() {
+-    int x = 42, y = x, z = y + 4;
+-    int k = -x;
+-    boolean f = true, not_f = !f;
+-    int i5 = 5, i13 = 13;
+-    int add = i13 + i5;
+-    int sub = i13 - i5;
+-    int mul = i13 * i5;
+-    int div = i13 / i5;
+-    int mod = i13 % i5;
+-
+-    printInt(x);
+-    printInt(y);
+-    printInt(z);
+-    printInt(k);
+-    printBool(f);
+-    printBool(not_f);
+-    printInt(add);
+-    printInt(sub);
+-    printInt(mul);
+-    printInt(div);
+-    printInt(mod);
+-    printInt(foo());
+-    testArray();
+-    testClass();
+-    test_unary_if();
+-    test_bin_if();
+-    test_unused_variables();
+-    return 0;
+-}
+-
+-int foo() {
+-    int a = 44;
+-    int b = a;
+-    b = b;
+-    int c = b;
+-    return c;
+-}
+-
+-void testArray() {
+-    int[] arr = new int[10];
+-    int i = 0;
+-    while (i < arr.length) {
+-        arr[i] = i;
+-        i++;
+-    }
+-    arr[i - 1] = arr[i - 2];
+-    printInt(i);
+-    printString("arr:");
+-    for (int x : arr) {
+-        printInt(x);
+-    }
+-}
+-
+-class C {
+-    int a, b, c;
+-
+-    int sum() {
+-        return a + b + c;
+-    }
+-}
+-
+-void testClass() {
+-    C c = new C;
+-    c.c = 1;
+-    c.b = 2;
+-    c.a = c.sum();
+-    printInt(c.sum());
+-}
+-
+-void test_unary_if() {
+-    boolean bbb = true;
+-    if (bbb) {
+-        printString("if0");
+-    }
+-    boolean b = true, x = false;
+-    if (b) {
+-        printString("if1");
+-    } else {
+-        if (x) {
+-            printInt(1);
+-        } else {
+-            printInt(2);
+-        }
+-        printString("else1");
+-    }
+-
+-    if (b) {
+-        printString("if2");
+-    }
+-
+-    if (!x) {
+-        printString("if3");
+-    }
+-    if (!x) {
+-        printString("if4");
+-    } else {
+-        printString("else4");
+-    }
+-}
+-
+-void test_bin_if() {
+-    int i1 = 42, i2 = 88;
+-    if (i1 < i2) printString("if1"); else printString("else1");
+-    if (i1 <= i2) printString("if2"); else printString("else2");
+-    if (i1 > i2) printString("if3"); else printString("else3");
+-    if (i1 >= i2) printString("if4"); else printString("else4");
+-    if (i1 == i2) printString("if5"); else printString("else5");
+-    if (i1 != i2) printString("if6"); else printString("else6");
+-
+-    boolean b1 = true, b2 = false;
+-    if (b1 == b2) printString("if7"); else printString("else7");
+-    if (b1 != b2) printString("if8"); else printString("else8");
+-
+-    string s1 = "abc", s2 = "xyz";
+-    if (s1 < s2) printString("if9"); else printString("else9");
+-    if (s1 <= s2) printString("if10"); else printString("else10");
+-    if (s1 > s2) printString("if11"); else printString("else11");
+-    if (s1 >= s2) printString("if12"); else printString("else12");
+-    if (s1 == s2) printString("if13"); else printString("else13");
+-    if (s1 != s2) printString("if14"); else printString("else14");
+-
+-    C c1 = null, c2 = new C;
+-    if (c1 == c2) printString("if15"); else printString("else15");
+-    if (c1 != c2) printString("if16"); else printString("else16");
+-
+-    int[] a1 = null, a2 = new int[42];
+-    if (a1 == a2) printString("if17"); else printString("else17");
+-    if (a1 != a2) printString("if18"); else printString("else18");
+-
+-    string ss = "abc", sss = ss;
+-    if (ss == sss) {
+-        printString("if19");
+-    } else {
+-        printString("else19");
+-    }
+-}
+-
+-void test_unused_variables() {
+-    int x = 42, y = x, z = x + y;
+-    printInt(z);
+-}
+diff --git a/good/new_array_length.lat b/good/new_array_length.lat
+index ae2553e..bb24287 100644
+--- a/good/new_array_length.lat
++++ b/good/new_array_length.lat
+@@ -1,5 +1,5 @@
+ // Author: Krzysztof Małysa (2021)
+ int main() {
+-	printInt(new int[42].length);
++	printInt((new int[42]).length);
+ 	return 0;
+ }
+diff --git a/good/new_array_subscript.lat b/good/new_array_subscript.lat
+index e63114d..53fdb8a 100644
+--- a/good/new_array_subscript.lat
++++ b/good/new_array_subscript.lat
+@@ -1,7 +1,7 @@
+ // Author: Krzysztof Małysa (2021)
+ int main() {
+-	printInt(new int[42][8]);
+-	printString(new string[42][41]);
+-	printString("x" + new string[5][0] + "y");
++	printInt((new int[42])[8]);
++	printString((new string[42])[41]);
++	printString("x" + (new string[5])[0] + "y");
+ 	return 0;
+ }
+diff --git a/good/null_cast_to_int_array.lat b/good/null_cast_to_int_array.lat
+index d177a41..d487e35 100644
+--- a/good/null_cast_to_int_array.lat
++++ b/good/null_cast_to_int_array.lat
+@@ -1,6 +1,6 @@
+ // Author: Krzysztof Małysa (2020)
+ int main() {
+-    (int[])null == null;
+-    (int[][])null == null;
++    (int[])null == (int[])null;
++    (int[][])null == (int[][])null;
+     return 0;
+ }
+diff --git a/good/param_passing_method_array.lat b/good/param_passing_method_array.lat
+index 981c51e..d492d0f 100644
+--- a/good/param_passing_method_array.lat
++++ b/good/param_passing_method_array.lat
+@@ -31,7 +31,7 @@ class PP {
+ 	void f2(string[] i0, string[] i1, string[] i2, string[] i3, string[] i4, string[] i5, string[] i6, string[] i7, string[] i8, string[] i9, string[] i10, string[] i11, string[] i12, string[] i13, string[] i14, string[] i15, string[] i16, string[] i17, string[] i18, string[] i19, string[] i20, string[] i21, string[] i22, string[] i23, string[] i24, string[] i25, string[] i26, string[] i27, string[] i28, string[] i29, string[] i30, string[] i31, string[] i32, string[] i33, string[] i34) {
+ 		i2[2] = "movsx";
+ 		printArray(i2);
+-		i2 = null;
++		i2 = (string[])null;
+ 		printArray(i2);
+ 	}
+ 
+@@ -59,7 +59,7 @@ class PP {
+ 	void f6(string[] i0, string[] i1, string[] i2, string[] i3, string[] i4, string[] i5, string[] i6, string[] i7, string[] i8, string[] i9, string[] i10, string[] i11, string[] i12, string[] i13, string[] i14, string[] i15, string[] i16, string[] i17, string[] i18, string[] i19, string[] i20, string[] i21, string[] i22, string[] i23, string[] i24, string[] i25, string[] i26, string[] i27, string[] i28, string[] i29, string[] i30, string[] i31, string[] i32, string[] i33, string[] i34) {
+ 		i6[2] = "n";
+ 		printArray(i6);
+-		i6 = null;
++		i6 = (string[])null;
+ 		printArray(i6);
+ 	}
+ 
+diff --git a/good/variable_binds_to_argument.lat b/good/variable_binds_to_argument.lat
+index 2c74c61..155414c 100644
+--- a/good/variable_binds_to_argument.lat
++++ b/good/variable_binds_to_argument.lat
+@@ -4,5 +4,5 @@ void foo(int x) {
+ }
+ 
+ int main() {
+-	return 42;
++	return 0;
+ }
+diff --git a/good/variable_binds_to_field.lat b/good/variable_binds_to_field.lat
+index 4dacbcb..785e0fe 100644
+--- a/good/variable_binds_to_field.lat
++++ b/good/variable_binds_to_field.lat
+@@ -8,5 +8,5 @@ class A {
+ 
+ 
+ int main() {
+-	return 42;
++	return 0;
+ }
+diff --git a/good/variable_binds_to_inherited_field.lat b/good/variable_binds_to_inherited_field.lat
+index edc50fe..fe6dc6f 100644
+--- a/good/variable_binds_to_inherited_field.lat
++++ b/good/variable_binds_to_inherited_field.lat
+@@ -10,5 +10,5 @@ class B {
+ }
+ 
+ int main() {
+-	return 42;
++	return 0;
+ }
+diff --git a/good/bin_ops.lat b/good_weird/bin_ops.lat
+similarity index 100%
+rename from good/bin_ops.lat
+rename to good_weird/bin_ops.lat
+diff --git a/good/bin_ops.output b/good_weird/bin_ops.output
+similarity index 100%
+rename from good/bin_ops.output
+rename to good_weird/bin_ops.output
+diff --git a/good/comptime_negation.lat b/good_weird/comptime_negation.lat
+similarity index 100%
+rename from good/comptime_negation.lat
+rename to good_weird/comptime_negation.lat
+diff --git a/good/comptime_negation.output b/good_weird/comptime_negation.output
+similarity index 100%
+rename from good/comptime_negation.output
+rename to good_weird/comptime_negation.output
+diff --git a/good/comptime_null.lat b/good_weird/comptime_null.lat
+similarity index 100%
+rename from good/comptime_null.lat
+rename to good_weird/comptime_null.lat
+diff --git a/good/comptime_null.output b/good_weird/comptime_null.output
+similarity index 100%
+rename from good/comptime_null.output
+rename to good_weird/comptime_null.output
+diff --git a/good/comptime_string_add.lat b/good_weird/comptime_string_add.lat
+similarity index 100%
+rename from good/comptime_string_add.lat
+rename to good_weird/comptime_string_add.lat
+diff --git a/good/comptime_string_add.output b/good_weird/comptime_string_add.output
+similarity index 100%
+rename from good/comptime_string_add.output
+rename to good_weird/comptime_string_add.output
+diff --git a/good/error.exit_code b/good_weird/error.exit_code
+similarity index 100%
+rename from good/error.exit_code
+rename to good_weird/error.exit_code
+diff --git a/good/error.lat b/good_weird/error.lat
+similarity index 100%
+rename from good/error.lat
+rename to good_weird/error.lat
+diff --git a/good/error.output b/good_weird/error.output
+similarity index 100%
+rename from good/error.output
+rename to good_weird/error.output
+diff --git a/good/new_class_field_and_method.lat b/good_weird/new_class_field_and_method.lat
+similarity index 100%
+rename from good/new_class_field_and_method.lat
+rename to good_weird/new_class_field_and_method.lat
+diff --git a/good/new_class_field_and_method.output b/good_weird/new_class_field_and_method.output
+similarity index 100%
+rename from good/new_class_field_and_method.output
+rename to good_weird/new_class_field_and_method.output
+diff --git a/good/reachability.lat b/good_weird/reachability.lat
+similarity index 100%
+rename from good/reachability.lat
+rename to good_weird/reachability.lat
+diff --git a/good/reachability.output b/good_weird/reachability.output
+similarity index 100%
+rename from good/reachability.output
+rename to good_weird/reachability.output
+diff --git a/good/unary_ops.lat b/good_weird/unary_ops.lat
+similarity index 100%
+rename from good/unary_ops.lat
+rename to good_weird/unary_ops.lat
+diff --git a/good/unary_ops.output b/good_weird/unary_ops.output
+similarity index 100%
+rename from good/unary_ops.output
+rename to good_weird/unary_ops.output
+diff --git a/good/var_namespace_vs_function_namespace.lat b/good_weird/var_namespace_vs_function_namespace.lat
+similarity index 100%
+rename from good/var_namespace_vs_function_namespace.lat
+rename to good_weird/var_namespace_vs_function_namespace.lat
+diff --git a/good/var_namespace_vs_function_namespace.output b/good_weird/var_namespace_vs_function_namespace.output
+similarity index 100%
+rename from good/var_namespace_vs_function_namespace.output
+rename to good_weird/var_namespace_vs_function_namespace.output
+diff --git a/good/var_self_comparison_eq.lat b/good_weird/var_self_comparison_eq.lat
+similarity index 100%
+rename from good/var_self_comparison_eq.lat
+rename to good_weird/var_self_comparison_eq.lat
+diff --git a/good/var_self_comparison_eq.output b/good_weird/var_self_comparison_eq.output
+similarity index 100%
+rename from good/var_self_comparison_eq.output
+rename to good_weird/var_self_comparison_eq.output
+diff --git a/good/var_self_comparison_ne.lat b/good_weird/var_self_comparison_ne.lat
+similarity index 100%
+rename from good/var_self_comparison_ne.lat
+rename to good_weird/var_self_comparison_ne.lat
+diff --git a/good/var_self_comparison_ne.output b/good_weird/var_self_comparison_ne.output
+similarity index 100%
+rename from good/var_self_comparison_ne.output
+rename to good_weird/var_self_comparison_ne.output
+diff --git a/warnings/array_subscript_null_array.lat b/warnings/array_subscript_null_array.lat
+index 6a3aee6..cdd7cf6 100644
+--- a/warnings/array_subscript_null_array.lat
++++ b/warnings/array_subscript_null_array.lat
+@@ -1,5 +1,5 @@
+ // Author: Krzysztof Małysa (2020)
+ int main() {
+-	(int[])null[0];
++	((int[])null)[0];
+ 	return 0;
+ }
+diff --git a/warnings/dead_code_in_while_after_error.lat b/warnings/dead_code_in_while_after_error.lat
+deleted file mode 100644
+index 351e267..0000000
+--- a/warnings/dead_code_in_while_after_error.lat
++++ /dev/null
+@@ -1,8 +0,0 @@
+-// Author: Krzysztof Małysa (2020)
+-int main() {
+-	while (true) {
+-		error();
+-		readInt();
+-		printString("bla bla bla");
+-	}
+-}
+diff --git a/warnings/dead_code_in_while_after_while_true.lat b/warnings/dead_code_in_while_after_while_true.lat
+deleted file mode 100644
+index bc31769..0000000
+--- a/warnings/dead_code_in_while_after_while_true.lat
++++ /dev/null
+@@ -1,8 +0,0 @@
+-// Author: Krzysztof Małysa (2020)
+-int main() {
+-	while (true) {
+-		while (true);
+-		readInt();
+-		printString("bla bla bla");
+-	}
+-}
+diff --git a/warnings/var_self_comparison_eq.lat b/warnings/var_self_comparison_eq.lat
+deleted file mode 100644
+index d3db1d9..0000000
+--- a/warnings/var_self_comparison_eq.lat
++++ /dev/null
+@@ -1,5 +0,0 @@
+-// Author: Krzysztof Małysa (2020)
+-int main() {
+-	int x;
+-	if (x == x) return 0;
+-}
+diff --git a/warnings/var_self_comparison_ne.lat b/warnings/var_self_comparison_ne.lat
+deleted file mode 100644
+index c33141c..0000000
+--- a/warnings/var_self_comparison_ne.lat
++++ /dev/null
+@@ -1,6 +0,0 @@
+-// Author: Krzysztof Małysa (2020)
+-int main() {
+-	int x;
+-	if (x != x) {}
+-	else return 0;
+-}
+-- 
+2.34.1
+
