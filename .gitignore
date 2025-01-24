@@ -1,6 +1,7 @@
 *.bc
 *.ll
 dist-newstyle
+README-oficjalne.md
 Latte/Abs.hs
 Latte/Doc.txt
 Latte/ErrM.hs
