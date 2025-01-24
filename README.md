@@ -11,7 +11,10 @@ mkdir test
 cd test
 cp -r ../driver ../lattests ../mrjp-tests ../pb429141.tgz ../test.sh .
 git clone https://github.com/varqox/mrjp-tests.git varqox/mrjp-tests
-./driver bash test.sh
+cd varqox/mrjp-tests
+git apply ../../0001-napraw-testy-varqox.patch
+cd ../..
+./driver 3 bash test.sh
 ```
 
 compiled using:
