@@ -6,7 +6,7 @@ indeks: 429141
 
 instrukcje uruchamiania
 ```
-gcc -o driver test-tmpfile driver.c
+gcc -o driver test-tmpfile/driver.c
 mkdir test
 cd test
 cp -r ../driver ../lattests ../mrjp-tests ../pb429141.tgz ../test.sh .
