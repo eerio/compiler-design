@@ -1,2 +1,0 @@
-more tests:
-https://github.com/varqox/mrjp-tests/blob/main/good/tricky_for_loop.lat

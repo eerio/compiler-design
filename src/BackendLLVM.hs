@@ -10,7 +10,7 @@ import Control.Monad.Reader (ReaderT, runReaderT, MonadReader (local), ask, asks
 import Control.Monad.Identity (Identity (runIdentity))
 import Data.Map (Map, empty, fromList, lookup, union, size, insert)
 import qualified Data.Map
-import Data.Sequence (singleton, Seq, intersperse)
+import Data.Sequence (singleton, Seq, intersperse, empty)
 import Control.Monad.State (State, StateT (runStateT), runState, gets, modify, put, get)
 import Control.Monad.Writer (WriterT (runWriterT))
 import qualified Data.Foldable
@@ -100,7 +100,7 @@ instance LLVMTypeable Primitive where
     llvmType (I8 _) = I8Type
     llvmType (I32 _) = I32Type
     llvmType (Pointer p) = PointerType $ llvmType p
-    llvmType Nullptr = PointerType $ I8Type
+    llvmType Nullptr = PointerType I8Type
 
 
 instance LLVMTypeable Value where
@@ -374,6 +374,7 @@ emitLLVM prog@(Program _ topDefs) = do
             "declare i8* @readString()",
             "declare i8* @__internal_concat(i8*, i8*)",
             "declare i8* @__calloc(i32)",
+            "declare i1 @__internal_strcmp(i8*, i8*)",
             "%Array = type { i32, i8* }"
             ]
     initCode ++ concatMap show blocks
@@ -398,6 +399,7 @@ instance Compilable ProgramC where
         compiledTopDefs <- traverse (local (const env) . compile) topDefs
         let code = mconcat compiledTopDefs
 
+        _ <- addNewString ""
         allStrings <- gets strings
         let prepString rawStr = "\"" ++ concatMap charToHex rawStr ++ "\\00\""
         let llvmStrings = unlines $ map (\(str, ind) -> "@strings" ++ show ind ++ " = private constant [" ++ show (length str + 1) ++ " x i8] c" ++ prepString str ++ "\n") $ Data.Map.toList allStrings
@@ -644,6 +646,25 @@ instance Compilable Stmt where
                 reg <- getNewRegister (PointerType $ llvmType decltype)
                 modify (\st -> st { localVars = Data.Map.insert ident reg (localVars st) })
                 addToCurrentBlock (Alloca reg)
+                -- default initialize
+                case decltype of
+                    TStr _ -> do
+                        emptyStringInd <- addNewString ""
+                        loc <- gets currentLoc
+                        modify (\st -> st { currentLoc = loc + 1 })
+                        let reg2 = Register loc (PointerType I8Type)
+                        addToCurrentBlock (Custom $ show reg2 ++ " = getelementptr [1 x i8], [1 x i8]* @strings" ++ show emptyStringInd ++ ", i32 0, i32 0\n")
+                        addToCurrentBlock (Store reg2 reg)
+                    TInt _ -> do
+                        addToCurrentBlock (Store (ConstValue (I32 0)) reg)
+                    TBool _ -> do
+                        addToCurrentBlock (Store (ConstValue (I1 False)) reg)
+                    TArr _ _ -> do
+                        addToCurrentBlock (Custom $ "store " ++ show (llvmType decltype) ++ " null, " ++ show (PointerType $ llvmType decltype) ++ show reg ++ "\n")
+                    TCls _ _ -> do
+                        addToCurrentBlock (Custom $ "store " ++ show (llvmType decltype) ++ " null, " ++ show (PointerType $ llvmType decltype) ++ show reg ++ "\n")
+                    _ -> do
+                        error "Internal compiler error: no default initialization for this type"
                 return []
 
     compile (SCondElse _ exp stmt1 stmt2) = do
@@ -659,11 +680,15 @@ instance Compilable Stmt where
         condEndBlock <- gets currentBlock
         predecessor <- getLabelOfCurrentBlock
         modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail condTrueLabel)  [] [predecessor]})
+        prevLocalVars <- gets localVars
         thenBlocks <- compile stmt1
+        modify (\st -> st { localVars = prevLocalVars })
         addToCurrentBlock (Custom $ "br label " ++ endLabel ++ "\n")
         thenEndBlock <- gets currentBlock
         modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail condFalseLabel) [] [predecessor]})
+        prevLocalVars <- gets localVars
         elseBlocks <- compile stmt2
+        modify (\st -> st { localVars = prevLocalVars })
         addToCurrentBlock (Custom $ "br label " ++ endLabel ++ "\n")
         elseEndBlock <- gets currentBlock
         modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail endLabel) [] [Label (tail condTrueLabel), Label (tail condFalseLabel)]})
@@ -681,7 +706,9 @@ instance Compilable Stmt where
         condEndBlock <- gets currentBlock
         predecessor <- getLabelOfCurrentBlock
         modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail condTrueLabel) [] [predecessor]})
+        prevLocalVars <- gets localVars
         thenBlocks <- compile stmt
+        modify (\st -> st { localVars = prevLocalVars })
         addToCurrentBlock (Custom $ "br label " ++ endLabel ++ "\n")
         thenEndBlock <- gets currentBlock
         modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail endLabel) [] [Label (tail condTrueLabel), predecessor]})
@@ -710,7 +737,9 @@ instance Compilable Stmt where
         addToCurrentBlock (Custom $ "br i1 " ++ show val ++ ", label " ++ loopLabel ++ ", label " ++ endLabel ++ "\n")
         condEndBlock <- gets currentBlock
         modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail loopLabel) [] [Label $ tail condLabel]})
+        prevLocalVars <- gets localVars
         body <- compile stmt
+        modify (\st -> st { localVars = prevLocalVars })
         addToCurrentBlock (Custom $ "br label " ++ condLabel ++ "\n")
         bodyEndBlock <- gets currentBlock
         modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail endLabel) [] [Label $ tail condLabel]})
@@ -991,16 +1020,31 @@ compileExpr (ERel _ expr1 op expr2) = do
     loc <- gets currentLoc
     modify (\st -> st { currentLoc = loc + 1 })
     let returnReg = Register loc I1Type
-    let ins = Custom (show returnReg ++ " = icmp " ++ case op of
-            OpLt _ -> "slt"
-            OpLe _ -> "sle"
-            OpGt _ -> "sgt"
-            OpGe _ -> "sge"
-            OpEq _ -> "eq"
-            OpNe _ -> "ne"
-            ++ " " ++ show argType ++ " " ++ show val1 ++ ", " ++ show val2 ++ "\n")
-    addToCurrentBlock ins
-    return (llvmCode1 ++ llvmCode2, returnReg)
+    case llvmType val1 of
+        PointerType I8Type -> do
+            let ins = Custom (show returnReg ++ " = call i1 @__internal_strcmp(i8* " ++ show val1 ++ ", i8* " ++ show val2 ++ ")\n")
+            addToCurrentBlock ins
+            case op of
+                OpNe _ -> return (llvmCode1 ++ llvmCode2, returnReg)
+                OpEq _ -> do
+                    loc <- gets currentLoc
+                    modify (\st -> st { currentLoc = loc + 1 })
+                    let returnReg2 = Register loc I1Type
+                    let ins2 = Custom (show returnReg2 ++ " = xor i1 1, " ++ show returnReg ++ "\n")
+                    addToCurrentBlock ins2
+                    return (llvmCode1 ++ llvmCode2, returnReg2)
+                _ -> error "Internal compiler error: only == and != supported for strings"
+        _ -> do
+            let ins = Custom (show returnReg ++ " = icmp " ++ case op of
+                    OpLt _ -> "slt"
+                    OpLe _ -> "sle"
+                    OpGt _ -> "sgt"
+                    OpGe _ -> "sge"
+                    OpEq _ -> "eq"
+                    OpNe _ -> "ne"
+                    ++ " " ++ show argType ++ " " ++ show val1 ++ ", " ++ show val2 ++ "\n")
+            addToCurrentBlock ins
+            return (llvmCode1 ++ llvmCode2, returnReg)
 
 compileExpr (ENeg _ expr) = do
     (llvmCode, val) <- compileExpr expr
@@ -1189,6 +1233,22 @@ compileExpr (ENew _ ident@(Ident i)) = do
     addToCurrentBlock bitcastCode
     addToCurrentBlock vtableFetchCode
     addToCurrentBlock storeCode
+
+    -- default-initialize strings if any
+    mapM_ (\ (Ident attrName, attrType) -> case attrType of
+        PointerType I8Type -> do
+            emptyString <- addNewString ""
+            loc <- gets currentLoc
+            modify (\st -> st { currentLoc = loc + 1 })
+            let attrFieldPtr = Register loc (PointerType $ PointerType I8Type)
+            let attrInd = case getAttrIndex ident (Ident attrName) classes' of
+                    Just ind -> ind
+                    Nothing -> error $ "Internal compiler error: attribute " ++ show attrName ++ " not found in class " ++ show ident
+            let ins = Custom (show attrFieldPtr ++ " = getelementptr inbounds " ++ show (ClassType ident) ++ ", " ++ show (PointerType (ClassType ident)) ++ " " ++ show bitcastReg ++ ", i32 0, i32 " ++ show (attrInd) ++ "\n")
+            addToCurrentBlock ins
+            addToCurrentBlock $ Store (StringLiteral emptyString 1) attrFieldPtr
+            return ()
+        _ -> return ()) (fields class_)
     return ([], bitcastReg)
 
 

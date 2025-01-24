@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 void error()
 {
@@ -14,9 +15,17 @@ void printInt(int n)
     printf("%d\n", n);
 }
 
+bool __internal_strcmp(char *s1, char *s2)
+{
+    if (!s1 && !s2) { return false; }
+    if (!s1 || !s2) { return true; }
+
+    return strcmp(s1, s2);
+}
+
 void printString(char *s)
 {
-    if (!s) { error(); }
+    if (!s) { puts(""); return; }
     printf("%s\n", s);
 }
 
@@ -36,9 +45,11 @@ char* readString()
     size_t n_read = getline(&lineptr, &n_buf, stdin);
 
     if (n_read == -1) 
-        error();
+        return NULL;
 
-    lineptr[n_read - 1] = '\0';
+    if (lineptr[n_read - 1] == '\n') {
+        lineptr[n_read - 1] = '\0';
+    }
     return lineptr;
 }
 
