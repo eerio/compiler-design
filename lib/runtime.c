@@ -44,8 +44,8 @@ char* readString()
 
 char* __internal_concat(char *str1, char *str2)
 {
-    if (!str1) { error(); }
-    if (!str2) { error(); }
+    if (!str1) { return str2; }
+    if (!str2) { return str1; }
 
     size_t len1 = strlen(str1);
     size_t len2 = strlen(str2);

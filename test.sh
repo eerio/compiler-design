@@ -16,7 +16,7 @@ temp_out_exec=/dev/fd/$TEMP_FILE_FD_3
 # for filename in $(find "$RT"/good "$RT2"/good -name "*.lat"); do
 # for filename in $(find "$RT"/good "$RT2"/good ! -path "$RT/good/virtual/*" ! -path "$RT/good/arrays/*" -name "*.lat"); do
 # lattests/extensions/objects1
-for filename in $(find  lattests/extensions "$RT2"/good/  "$RT"/good/basic ! -path "$RT2"/good/daria-error.lat -name "*.lat"); do
+for filename in $(find  varqox/mrjp-tests/good mrjp-tests/good/arrays mrjp-tests/good/virtual lattests/extensions "$RT2"/good/  "$RT"/good/basic ! -path "$RT2"/good/daria-error.lat -name "*.lat"); do
   [ -e "$filename" ] || continue
   echo -n "$filename"
 
@@ -56,6 +56,8 @@ for filename in $(find  lattests/extensions "$RT2"/good/  "$RT"/good/basic ! -pa
   >| $temp_err
   >| $temp_out_exec
 done
+
+exit 
 
 for filename in $(find "varqox/mrjp-tests/bad" "$RT2"/bad "$RT/bad/semantic" ! -path "$RT/weird_bad" -name "*.lat"); do
   [ -e "$filename" ] || continue

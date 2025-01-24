@@ -1,0 +1,14 @@
+int main() {
+  int[] x = new int[4];
+
+  x[0] = 5;
+  x[1] = 10;
+
+  int res = 1000;
+  for (int c : x) {
+		res = res + c;
+  }
+  printInt(res);
+  return 0;
+}
+

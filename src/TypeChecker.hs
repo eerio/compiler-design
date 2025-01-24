@@ -118,7 +118,7 @@ getType pos ident@(Ident i) = do
         Nothing -> do
             case clsName env of
                 Just clsname -> getMember clsname ident
-                Nothing -> throwError $ UnknownIdentifier pos (Ident $ i ++ "gettype")
+                Nothing -> throwError $ UnknownIdentifier pos (Ident $ i ++ " ; gettype")
 
 class Inspectable a where
     inspect :: a -> IM Type

@@ -1,0 +1,35 @@
+void printArray(string[] a) {
+	if (a == (string[])null) printString("null");
+	else {
+		string res = "[";
+		string delim = "";
+		for (string s : a) {
+			res = res + delim + "\"" + s + "\"";
+			delim = ", ";
+		}
+		printString(res + "]");
+    
+	}
+  
+}
+
+class Cls {
+  void fun(string[] a1, string[] a2, string[] a3, string[] a4) {
+    // a1[2] = "xxxxx!";
+    // a2 = new string[5];
+  }
+}
+
+int main() {
+  Cls obj = new Cls;
+  string[] x = new string[4];
+  string[] y = new string[100];
+
+  x[0] = "aaa";
+  x[1] = "bbb";
+  // obj.fun(x, y, new string[4], null);
+
+  printArray(x);
+  printInt(y.length);
+  return 0;
+}

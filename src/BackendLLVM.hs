@@ -20,7 +20,7 @@ import Data.Maybe (Maybe, fromMaybe, maybeToList)
 import Data.Foldable (toList, traverse_)
 import Data.Char(ord)
 import Numeric(showHex)
-import Text.ParserCombinators.ReadP (char)
+import Text.ParserCombinators.ReadP (char, option)
 import Data.Graph (Graph, Vertex, graphFromEdges, topSort)
 import Control.Monad (zipWithM)
 
@@ -85,6 +85,7 @@ instance Show Primitive where
     show (I8 i) = show i
     show (I32 i) = show i
     show (Pointer p) = show p ++ "*"
+    show Nullptr = "null"
 
 instance Show Value where
     show (ConstValue p) = show p
@@ -99,6 +100,7 @@ instance LLVMTypeable Primitive where
     llvmType (I8 _) = I8Type
     llvmType (I32 _) = I32Type
     llvmType (Pointer p) = PointerType $ llvmType p
+    llvmType Nullptr = PointerType $ I8Type
 
 
 instance LLVMTypeable Value where
@@ -113,7 +115,7 @@ instance LLVMTypeable (Type' BNFC'Position) where
     llvmType (TVoid _) = VoidType
     llvmType (TCls _ (Ident name)) = PointerType $ ClassType (Ident name)
     llvmType (TFun _ retType argTypes) = FunctionType (llvmType retType) (map llvmType argTypes)
-    llvmType (TArr _ type_) = ArrType $ llvmType type_
+    llvmType (TArr _ type_) = PointerType $ ArrType $ llvmType type_
 
 instance LLVMTypeable (FunDefC' BNFC'Position) where
     llvmType (FunDef _ retType _ args _) = do
@@ -129,7 +131,7 @@ instance Show PrimitiveType where
     show (FunctionType retType argTypes) = show retType ++ " (" ++ Data.List.intercalate ", " (map show argTypes) ++ ")"
     show (ClassType (Ident name)) = "%class." ++ name
     show (ClassVtableType (Ident name)) = "%vtable." ++ name ++ ".type"
-    show (ArrType type_) = show type_ ++ "[]"
+    show (ArrType type_) = "%Array"
 
 data St = St {
     strings :: Map String Integer,
@@ -179,14 +181,27 @@ processClass acc cls =
     let inheritedFields  = maybe [] (\p -> fromMaybe [] (Data.Map.lookup p acc >>= Just . fields)) (getParentName cls)
         inheritedMethods = maybe [] (\p -> fromMaybe [] (Data.Map.lookup p acc >>= Just . methods)) (getParentName cls)
         ownMethods = getMethodTypes cls
-        filteredMethods = filter (\(m, _, _) -> m `notElem` map methodName ownMethods) inheritedMethods
-        newClass = Class (getParentName cls) (inheritedFields ++ getAttrTypes cls) (filteredMethods ++ map methodAddStem ownMethods)
+        methods' = f inheritedMethods ownMethods
+        newClass = Class (getParentName cls) (inheritedFields ++ getAttrTypes cls) methods'
     in Data.Map.insert (getClassName cls) newClass acc
     where
         methodName (name, _) = name
         methodAddStem (Ident name, t) = (Ident name, "@" ++ getClassNameStr cls ++ "_" ++ name, t)
         getClassNameStr (ClsDef _ (Ident name) _) = name
         getClassNameStr (ClsDefExt _ (Ident name) _ _) = name
+
+        f :: [(Ident, String, PrimitiveType)] -> [(Ident, PrimitiveType)] -> [(Ident, String, PrimitiveType)]
+        f inheritedMethods ownMethods = do
+            -- if an inherited method is later overriden, we need to replace it
+            let inheritedReplacedByVirtual = map (\(name, s, t) -> case Data.List.find (\(name2, _) -> name == name2) ownMethods of
+                    Just (_, t2) -> methodAddStem (name, t2)
+                    Nothing -> (name, s, t)
+                    ) inheritedMethods
+            -- if own method was inherited, we need t remove it
+            let ownFiltered = filter (\(name, _) -> name `notElem` map fst3 inheritedMethods) ownMethods
+            inheritedReplacedByVirtual ++ map methodAddStem ownFiltered
+        
+        fst3 (a, _, _) = a
 
 
 createClassMap :: [ClsDefC] -> Map Ident Class
@@ -213,6 +228,17 @@ getMethodType2 className methodName classMap =
             let methodTypes = map (\(_, _, type_) -> type_) methods
             ind <- Data.List.elemIndex methodName methodNames
             return $ methodTypes !! ind
+
+getMethodType22 :: Ident -> Ident -> Map Ident Class -> Maybe (PrimitiveType, String)
+getMethodType22 className methodName classMap =
+    Data.Map.lookup className classMap >>= \(Class _ _ methods) -> lookup3 methodName methods
+    where
+        lookup3 methodName methods = do
+            let methodNames = map (\(name, _, _) -> name) methods
+            let methodTypes = map (\(_, name, type_) -> (type_, name)) methods
+            ind <- Data.List.elemIndex methodName methodNames
+            return $ methodTypes !! ind
+
 
 -- Function to retrieve method index in the vtable
 getMethodIndex :: Ident -> Ident -> Map Ident Class -> Maybe Int
@@ -347,7 +373,8 @@ emitLLVM prog@(Program _ topDefs) = do
             "declare i32 @readInt()",
             "declare i8* @readString()",
             "declare i8* @__internal_concat(i8*, i8*)",
-            "declare i8* @__calloc(i32)"
+            "declare i8* @__calloc(i32)",
+            "%Array = type { i32, i8* }"
             ]
     initCode ++ concatMap show blocks
 
@@ -494,11 +521,11 @@ dereference val = case val of
         returnReg <- getNewRegister p
         addToCurrentBlock (Load returnReg reg)
         return ([], returnReg)
-    _ -> error "Internal compiler error: trying to dereference non-pointer"
+    _ -> error $ "Internal compiler error: trying to dereference non-pointer: " ++ show (llvmType val)
 
 dereferenceType :: Value -> PrimitiveType
 dereferenceType (Register _ (PointerType p)) = p
-dereferenceType _ = error "Internal compiler error: trying to dereference non-pointer"
+dereferenceType _ = error "Internal compiler error: trying to dereference non-pointer type!"
 
 compileBinOp :: PrimitiveType -> Value -> Value -> String -> IM ([BasicBlock], Value)
 compileBinOp type_ val1 val2 op = do
@@ -540,30 +567,34 @@ optionallyBitcast (PointerType (ClassType (Ident neededClass))) val = do
             else do
                 addToCurrentBlock (Custom "; no bitcast needed because classes match")
                 return val
+        PointerType _ -> do
+            loc <- gets currentLoc
+            modify (\st -> st { currentLoc = loc + 1 })
+            let returnReg = Register loc (PointerType $ ClassType (Ident neededClass))
+            let ins = Custom (show returnReg ++ " = bitcast " ++ show (llvmType val) ++ " " ++ show val ++ " to " ++ show (PointerType $ ClassType (Ident neededClass)) ++ "\n")
+            addToCurrentBlock ins
+            return returnReg
         _ -> do
             addToCurrentBlock (Custom "; no bitcast needed because not a class pointer")
             return val
+optionallyBitcast (PointerType (ArrType t)) val = do
+    case llvmType val of
+        PointerType (ArrType _) -> do
+            addToCurrentBlock (Custom "; no bitcast needed because both are arrays")
+            return val
+        _ -> do
+            loc <- gets currentLoc
+            modify (\st -> st { currentLoc = loc + 1 })
+            let returnReg = Register loc (PointerType $ ArrType t)
+            let ins = Custom (show returnReg ++ " = bitcast " ++ show (llvmType val) ++ " " ++ show val ++ " to " ++ show (llvmType returnReg) ++ "\n")
+            addToCurrentBlock ins
+            return returnReg
 optionallyBitcast p val = do
     addToCurrentBlock (Custom ("; no bitcast because no class pointer needed: " ++ show p))
     return val
 
 
 instance Compilable Stmt where
-    compile (SFor _ typ ident exp stmt) = do
-        let declForVar = SDecl BNFC'NoPosition typ [DeclNoInit BNFC'NoPosition ident]
-        loc <- gets currentLoc
-        modify (\st -> st { currentLoc = loc + 1 })
-        let declIndexIdent = "arrIndex" ++ show loc
-        let tmpArrIdent = "arr" ++ show loc
-        let declArr = SDecl BNFC'NoPosition (TArr BNFC'NoPosition typ) [DeclInit BNFC'NoPosition tmpArrIdent exp]
-        let declInd = SDecl BNFC'NoPosition (TInt BNFC'NoPosition) [DeclInit BNFC'NoPosition declIndexIdent (ELitInt BNFC'NoPosition 0)]
-        let cond = ERel BNFC'NoPosition (EVar BNFC'NoPosition (Ident declIndexIdent)) OpLt (EAttrAccess BNFC'NoPosition (EVar BNFC'NoPosition (Ident tmpArrIdent)) (Ident "length"))
-        let incr = SIncr BNFC'NoPosition (LValIdent BNFC'NoPosition (Ident declIndexIdent))
-        let block = Block BNFC'NoPosition (stmt : [incr])
-        let while = SWhile BNFC'NoPosition cond block
-        let forStmt = Block BNFC'NoPosition [declArr, declInd, while]
-        compile forStmt
-
     compile (SEmpty _) = pure []
     compile (SBlock _ block) = compile block
     compile (SExp _ expr) = fst <$> compileExpr expr
@@ -588,7 +619,10 @@ instance Compilable Stmt where
         return [block]
     compile (SRetExp _ exp) = do
         (llvmCode, val) <- compileExpr exp
-        addToCurrentBlock (Ret val)
+        env <- ask
+        let retType = fromMaybe (error "Internal compiler error: no return type") (returnType env)
+        casted <- optionallyBitcast retType val
+        addToCurrentBlock (Ret casted)
         block <- gets currentBlock
         modify (\st -> st { currentBlock = BasicBlock (Just $ Label "invalid") [] [] })
         return $ llvmCode ++ [block]
@@ -682,6 +716,112 @@ instance Compilable Stmt where
         modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail endLabel) [] [Label $ tail condLabel]})
         return $ prevEndBlock : condCode ++ condEndBlock : body ++ [bodyEndBlock]
 
+    compile (SFor _ typ ident exp stmt) = do
+        (llvmCodeExp, val) <- compileExpr exp
+        -- get array length
+        loc <- gets currentLoc
+        modify (\st -> st { currentLoc = loc + 1 })
+        let lengthFieldPtr = Register loc (PointerType I32Type)
+        let ins = Custom (show lengthFieldPtr ++ " = getelementptr inbounds %Array, " ++ show (llvmType val) ++ " " ++ show val ++ ", i32 0, i32 0 ; get array length field ptr\n")
+        addToCurrentBlock ins
+        loc' <- gets currentLoc
+        modify (\st -> st { currentLoc = loc' + 1 })
+        let lengthReg = Register loc' I32Type
+        let ins' = Custom (show lengthReg ++ " = load i32, i32* " ++ show lengthFieldPtr ++ "\n")
+        addToCurrentBlock ins'
+
+        -- create variable holding the array element
+        loc <- gets currentLoc
+        modify (\st -> st { currentLoc = loc + 1 })
+        let reg = Register loc (PointerType $ llvmType typ)
+        let ins = Custom (show reg ++ " = alloca " ++ show (llvmType typ))
+        -- create variable holding the index
+        loc' <- gets currentLoc
+        modify (\st -> st { currentLoc = loc' + 1 })
+        let indexReg = Register loc' $ PointerType I32Type
+        let ins' = Custom (show indexReg ++ " = alloca i32")
+        addToCurrentBlock ins
+        addToCurrentBlock ins'
+        addToCurrentBlock (Custom $ "store i32 0, i32* " ++ show indexReg)
+
+        -- make cond block
+        loopLabelN <- gets currentLabel
+        modify (\st -> st { currentLabel = loopLabelN + 1 })
+        let condLabel = "%loopCond" ++ show loopLabelN
+        let loopLabel = "%loop" ++ show loopLabelN
+        let endLabel = "%loopEnd" ++ show loopLabelN
+        addToCurrentBlock (Custom $ "br label " ++ condLabel ++ "\n")
+        prevEndBlock <- gets currentBlock
+        predecessor <- getLabelOfCurrentBlock
+        modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail condLabel) [] [predecessor, Label $ tail loopLabel]})
+        -- check if index < length
+        loc'' <- gets currentLoc
+        modify (\st -> st { currentLoc = loc'' + 1 })
+        let condReg = Register loc'' I1Type
+        indexLoadLoc <- gets currentLoc
+        modify (\st -> st { currentLoc = indexLoadLoc + 1 })
+        let indexReg' = Register indexLoadLoc I32Type
+        let ins'' = Load indexReg' indexReg
+        addToCurrentBlock ins''
+        let ins'' = Custom (show condReg ++ " = icmp slt i32 " ++ show indexReg' ++ ", " ++ show lengthReg)
+        addToCurrentBlock ins''
+        addToCurrentBlock (Custom $ "br i1 " ++ show condReg ++ ", label " ++ loopLabel ++ ", label " ++ endLabel ++ "\n")
+        condEndBlock <- gets currentBlock
+        modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail loopLabel) [] [Label $ tail condLabel]})
+        -- body
+        -- load array element
+        -- bitcast data pointer from i8* to correct type
+        loc14 <- gets currentLoc
+        modify (\st -> st { currentLoc = loc14 + 1 })
+        let loc15 = Register loc14 (PointerType $ PointerType I8Type)
+        let ins14 = Custom (show loc15 ++ " = getelementptr inbounds %Array" ++ ", " ++ show (llvmType val) ++ " " ++ show val ++ ", i32 0, i32 1 ; get data ptr\n")
+        addToCurrentBlock ins14
+
+        -- load data pointer
+        loc15' <- gets currentLoc
+        modify (\st -> st { currentLoc = loc15' + 1 })
+        let reg16 = Register loc15' (PointerType I8Type)
+        let ins15 = Load reg16 loc15
+        addToCurrentBlock ins15
+
+        loc16 <- gets currentLoc
+        modify (\st -> st { currentLoc = loc16 + 1 })
+        let loc17 = Register loc16 (PointerType $ llvmType typ)
+        let ins16 = Custom (show loc17 ++ " = bitcast i8* " ++ show reg16 ++ " to " ++ show (PointerType $ llvmType typ) ++ " ; bitcast data ptr\n")
+        addToCurrentBlock ins16
+
+        loc''' <- gets currentLoc
+        modify (\st -> st { currentLoc = loc''' + 1 })
+        let elementPtr = Register loc''' (PointerType $ llvmType typ)
+        let ins''' = Custom (show elementPtr ++ " = getelementptr " ++ show (llvmType typ) ++ ", " ++ show (llvmType loc17) ++ " " ++ show loc17 ++ ", i32 " ++ show indexReg' ++ " ; get array element ptr\n")
+        addToCurrentBlock ins'''
+
+        loc'''' <- gets currentLoc
+        modify (\st -> st { currentLoc = loc'''' + 1 })
+        let elementReg = Register loc'''' (llvmType typ)
+        let ins'''' = Load elementReg elementPtr
+        addToCurrentBlock ins''''
+        -- store array element in variable
+        addToCurrentBlock (Store elementReg reg)
+        -- compile stmt with new variable
+        prevVars <- gets localVars
+        modify (\st -> st { localVars = Data.Map.insert ident reg prevVars })
+        body <- compile stmt
+        modify (\st -> st { localVars = prevVars })
+        -- increment index
+        loc''''' <- gets currentLoc
+        modify (\st -> st { currentLoc = loc''''' + 1 })
+        let indexReg'' = Register loc''''' I32Type
+        let ins''''' = Custom (show indexReg'' ++ " = add i32 " ++ show indexReg' ++ ", 1")
+        addToCurrentBlock ins'''''
+        addToCurrentBlock (Store indexReg'' indexReg)
+        -- jump back to cond
+        addToCurrentBlock (Custom $ "br label " ++ condLabel)
+        bodyEndBlock <- gets currentBlock
+        modify (\st -> st { currentBlock = BasicBlock (Just $ Label $ tail endLabel) [] [Label $ tail condLabel]})
+        return $ prevEndBlock : llvmCodeExp ++ condEndBlock : body ++ [bodyEndBlock]
+
+
 getRawString :: Value -> IM ([BasicBlock], Value)
 getRawString (StringLiteral ind length) = do
     loc <- gets currentLoc
@@ -691,6 +831,7 @@ getRawString (StringLiteral ind length) = do
     addToCurrentBlock ins
     return ([], returnReg)
 getRawString reg@(Register loc (PointerType I8Type)) = return ([], reg)
+getRawString c = error $ "Internal compiler error: trying to get raw string from non-pointer: " ++ show (llvmType c)
 
 concatStrings :: Expr -> Expr -> IM ([BasicBlock], Value)
 concatStrings expr1 expr2 = do
@@ -716,7 +857,7 @@ compileExpr (ECast _ t toknull) = do
     addToCurrentBlock ins
     return ([], returnReg)
 compileExpr (ELitNull _) = do
-    return ([], ConstValue (I32 0))
+    return ([], ConstValue Nullptr)
 compileExpr (EMethodApply _ expr method args) = do
     (llvmCode, val) <- compileExpr expr
     -- val is Pointer to a class, i.e. Pointer to Pointer to Vtable
@@ -796,20 +937,32 @@ compileExpr (EMethodApply _ expr method args) = do
 
 compileExpr (EApp _ i@(Ident ident) args) = do
     compiledArgs' <- traverse compileExpr args
+    let llvmCode' = mconcat . map fst $ compiledArgs'
+    let newArgs' = map snd compiledArgs'
+
     env <- ask
-    let argTypes = case Data.Map.lookup i (functions env) of
-            Just (_, types) -> types
-            Nothing -> error $ "Internal compiler error: function " ++ ident ++ " not found"
-    let retType = case Data.Map.lookup i (functions env) of
-            Just (type_, _) -> type_
-            Nothing -> error $ "Internal compiler error: function " ++ ident ++ " not found"
+    -- to nie dziala, nie ma insertu self
+    ((retType, argTypes), realName, newArgs, llvmCode) <- do
+        case Data.Map.lookup i (functions env) of
+            Just x -> return (x, ident, newArgs', llvmCode')
+            Nothing -> do
+                let classes' = classes env
+                let currentClas = currentClass env
+                case currentClas of
+                    Just cls -> do
+                        self' <- getVarValue (Ident "self")
+                        (code, self) <- dereference self'
+                        case getMethodType22 cls i classes' of
+                            Just (PointerType (FunctionType retType argTypes), realMethName) -> return ((retType, argTypes), tail realMethName, self : newArgs', llvmCode' ++ code)
+                            Nothing -> error $ "Nothing Internal compiler error: function not found: " ++ show i
+                            _ -> error "Else Internal compiler error: function not found"
+
 
     -- if needed, bitcast every argument to superclass
     compiledArgs <- mapM (\(argType, argVal) -> do
             ret <- optionallyBitcast argType argVal
             return (argType, ret)
-            ) $ zip argTypes (map snd compiledArgs')
-    let llvmCode = mconcat . map fst $ compiledArgs'
+            ) $ zip argTypes newArgs
 
     let argVals = map snd compiledArgs
     -- add types to arguments
@@ -820,8 +973,8 @@ compileExpr (EApp _ i@(Ident ident) args) = do
     modify (\st -> st { currentLoc = loc + 1 })
     let returnRegister = Register loc retType
     let ins = case retType of
-            VoidType -> "call " ++ show retType ++ " @" ++ ident ++ "(" ++ argsStr ++ ")\n"
-            _ -> show returnRegister ++ " = call " ++ show retType ++ " @" ++ ident ++ "(" ++ argsStr ++ ")\n"
+            VoidType -> "call " ++ show retType ++ " @" ++ realName ++ "(" ++ argsStr ++ ")\n"
+            _ -> show returnRegister ++ " = call " ++ show retType ++ " @" ++ realName ++ "(" ++ argsStr ++ ")\n"
     addToCurrentBlock (Custom ins)
     return (llvmCode, returnRegister)
 
@@ -832,7 +985,8 @@ compileExpr (ELVal _ lval) = do
 
 compileExpr (ERel _ expr1 op expr2) = do
     (llvmCode1, val1) <- compileExpr expr1
-    (llvmCode2, val2) <- compileExpr expr2
+    (llvmCode2, val2') <- compileExpr expr2
+    val2 <- optionallyBitcast (llvmType val1) val2'
     let argType = llvmType val1
     loc <- gets currentLoc
     modify (\st -> st { currentLoc = loc + 1 })
@@ -944,7 +1098,67 @@ compileExpr (EAnd _ expr1 _ expr2) = do
     addToCurrentBlock (Custom $ show returnReg ++ " = phi i1 [ false, " ++ labelStart ++ " ], [ " ++ show val2 ++ ", " ++ labelCheckSecondEnd ++ " ]")
     return (llvmCode1 ++ expr1Block : llvmCode2 ++ [expr1BlockEnd, expr2BlockEnd, expr2BlockEndEnd], returnReg)
 
-compileExpr (ENewArr _ type_ expr) = error "Not implemented: new array"
+compileExpr (ENewArr _ type_ expr) = do
+    -- get arr length
+    (llvmCode, val) <- compileExpr expr
+
+    -- multiply by 8 to get size
+    loc <- gets currentLoc
+    modify (\st -> st { currentLoc = loc + 1 })
+    let sizeReg' = Register loc I32Type
+    let ins = Custom (show sizeReg' ++ " = mul i32 " ++ show val ++ ", 8")
+    addToCurrentBlock ins
+
+    -- add 16 to size to store length and data ptr
+    loc' <- gets currentLoc
+    modify (\st -> st { currentLoc = loc' + 1 })
+    let sizeReg = Register loc' I32Type
+    let ins' = Custom (show sizeReg ++ " = add i32 " ++ show sizeReg' ++ ", 16")
+    addToCurrentBlock ins'
+
+    -- allocate memory
+    loc2 <- gets currentLoc
+    modify (\st -> st { currentLoc = loc2 + 1 })
+    let callocReg = Register loc2 (PointerType I8Type)
+    let callocCode = Custom (show callocReg ++ " = call i8*  @__calloc(i32 " ++ show sizeReg ++ ")")
+    addToCurrentBlock callocCode
+
+    -- prepare result
+    loc3 <- gets currentLoc
+    modify (\st -> st { currentLoc = loc3 + 1 })
+    let returnReg = Register loc3 (PointerType $ ArrType $ llvmType type_)
+    let bitcast = Custom (show returnReg ++ " = bitcast i8* " ++ show callocReg ++ " to " ++ show (PointerType $ ArrType $ llvmType type_))
+    addToCurrentBlock bitcast
+    -- let alloca = Custom (show returnReg ++ " = alloca %Array")
+    -- addToCurrentBlock alloca
+
+    -- get length field pointer
+    loc4 <- gets currentLoc
+    modify (\st -> st { currentLoc = loc4 + 1 })
+    let lenFieldPtr = Register loc4 (PointerType I32Type)
+    let lenFieldPtrIns = Custom (show lenFieldPtr ++ " = getelementptr %Array, %Array* " ++ show returnReg ++ ", i32 0, i32 0")
+    addToCurrentBlock lenFieldPtrIns
+    -- store length in struct
+    let storeLen = Custom ("store i32 " ++ show val ++ ", i32* " ++ show lenFieldPtr)
+    addToCurrentBlock storeLen
+
+    -- get data field pointer
+    loc5 <- gets currentLoc
+    modify (\st -> st { currentLoc = loc5 + 1 })
+    let dataFieldPtr = Register loc5 (PointerType $ PointerType $ llvmType type_)
+    let dataFieldPtrIns = Custom (show dataFieldPtr ++ " = getelementptr %Array, %Array* " ++ show returnReg ++ ", i32 0, i32 1")
+    addToCurrentBlock dataFieldPtrIns
+    -- store data in struct
+    loc6 <- gets currentLoc
+    modify (\st -> st { currentLoc = loc6 + 1 })
+    let dataPtr = Register loc6 (PointerType I8Type)
+    let dataPtrIns = Custom (show dataPtr ++ " = getelementptr i8, i8* " ++ show callocReg ++ ", i32 16")
+    addToCurrentBlock dataPtrIns
+    let storeData = Custom ("store i8* " ++ show dataPtr ++ ", i8** " ++ show dataFieldPtr)
+    addToCurrentBlock storeData
+
+    return (llvmCode, returnReg)
+
 compileExpr (ENew _ ident@(Ident i)) = do
     classes' <- asks classes
     let class_ = case Data.Map.lookup ident classes' of
@@ -976,7 +1190,6 @@ compileExpr (ENew _ ident@(Ident i)) = do
     addToCurrentBlock vtableFetchCode
     addToCurrentBlock storeCode
     return ([], bitcastReg)
-
 
 
 getVarValue :: Ident -> IM Value
@@ -1019,25 +1232,77 @@ compileLVal (LVar _ (Ident ident)) = do
     env <- ask
     varValue <- getVarValue (Ident ident)
     return ([], varValue)
-compileLVal (LArrAcc _ expr1 expr2) = error "Not implemented: array access"
-compileLVal (LAttrAcc _ expr (Ident ident)) = do
-    (llvmCode, val) <- compileExpr expr
-    let classType = case llvmType val of
-            PointerType (ClassType cls) -> cls
-            _ -> error "Internal compiler error: trying to access attribute of non-class"
-    env <- ask
-    let attrInd' = getAttrIndex classType (Ident ident) (classes env)
-    let attrInd = case attrInd' of
-            Just ind -> ind
-            Nothing -> error $ "Internal compiler error: attribute " ++ show ident ++ " not found in class " ++ show classType
-    let attrType' = getAttrType3 classType (Ident ident) (classes env)
-    let attrType = case attrType' of
-            Just t -> t
-            Nothing -> error $ "Internal compiler error: attribute " ++ show ident ++ " not found in class " ++ show classType
+compileLVal (LArrAcc _ expr1 expr2) = do
+    (llvmCode1, val1ptr) <- compileExpr expr1
+    (llvmCode2, val2) <- compileExpr expr2
+    let eltType = case llvmType val1ptr of
+            PointerType (ArrType t) -> t
+            _ -> error "Internal compiler error: trying to access array element of non-array"
 
+    -- get data pointer field address
     loc <- gets currentLoc
     modify (\st -> st { currentLoc = loc + 1 })
-    let returnReg = Register loc (PointerType attrType)
-    let ins = Custom (show returnReg ++ " = getelementptr inbounds " ++ show (ClassType classType) ++ ", " ++ show (PointerType $ ClassType classType) ++ " " ++ show val ++ ", i32 0, i32 " ++ show attrInd ++ "\n")
+    let dataPtrReg = Register loc (PointerType $ PointerType I8Type)
+    let ins = Custom (show dataPtrReg ++ " = getelementptr inbounds %Array, %Array* " ++ show val1ptr ++ ", i32 0, i32 1")
+    -- load data pointer
+    loc2 <- gets currentLoc
+    modify (\st -> st { currentLoc = loc2 + 1 })
+    let dataPtrReg' = Register loc2 (PointerType I8Type)
+    let ins2 = Custom (show dataPtrReg' ++ " = load i8*, i8** " ++ show dataPtrReg)
+    -- bitcast to correct type
+    loc3 <- gets currentLoc
+    modify (\st -> st { currentLoc = loc3 + 1 })
+    let dataPtrReg'' = Register loc3 (PointerType eltType)
+    let ins3 = Custom (show dataPtrReg'' ++ " = bitcast i8* " ++ show dataPtrReg' ++ " to " ++ show (PointerType eltType))
+
+    -- get element address
+    loc4 <- gets currentLoc
+    modify (\st -> st { currentLoc = loc4 + 1 })
+    let elementPtrReg = Register loc4 (PointerType eltType)
+    let ins4 = Custom (show elementPtrReg ++ " = getelementptr " ++ show eltType ++ ", " ++ show (PointerType eltType) ++ " " ++ show dataPtrReg'' ++ ", i32 " ++ show val2)
     addToCurrentBlock ins
-    return (llvmCode, returnReg)
+    addToCurrentBlock ins2
+    addToCurrentBlock ins3
+    addToCurrentBlock ins4
+    return (llvmCode1 ++ llvmCode2, elementPtrReg)
+
+
+compileLVal (LAttrAcc _ expr (Ident ident)) = do
+    (llvmCode, val) <- compileExpr expr
+    case llvmType val of
+        PointerType (ArrType t) -> case ident of
+            "length" -> do
+                loc <- gets currentLoc
+                modify (\st -> st { currentLoc = loc + 1 })
+                let lengthPtr = Register loc (PointerType I32Type)
+                let ins = Custom (show lengthPtr ++ " = getelementptr inbounds %Array, %Array* " ++ show val ++ ", i32 0, i32 0\n")
+                addToCurrentBlock ins
+
+                -- dont dereference, as compileLVal should return a pointer to the
+                -- actual value
+                -- loc2 <- gets currentLoc
+                -- modify (\st -> st { currentLoc = loc2 + 1 })
+                -- let returnReg = Register loc2 I32Type
+                -- let ins2 = Custom (show returnReg ++ " = load i32, i32* " ++ show lengthPtr ++ "\n")
+                -- addToCurrentBlock ins2
+                -- return (llvmCode, returnReg)
+                return (llvmCode, lengthPtr)
+            _ -> error "Internal compiler error: trying to access attribute of non-class"
+        PointerType (ClassType classType) -> do
+            env <- ask
+            let attrInd' = getAttrIndex classType (Ident ident) (classes env)
+            let attrInd = case attrInd' of
+                    Just ind -> ind
+                    Nothing -> error $ "Internal compiler error: attribute " ++ show ident ++ " not found in class " ++ show classType
+            let attrType' = getAttrType3 classType (Ident ident) (classes env)
+            let attrType = case attrType' of
+                    Just t -> t
+                    Nothing -> error $ "Internal compiler error: attribute " ++ show ident ++ " not found in class " ++ show classType
+
+            loc <- gets currentLoc
+            modify (\st -> st { currentLoc = loc + 1 })
+            let returnReg = Register loc (PointerType attrType)
+            let ins = Custom (show returnReg ++ " = getelementptr inbounds " ++ show (ClassType classType) ++ ", " ++ show (PointerType $ ClassType classType) ++ " " ++ show val ++ ", i32 0, i32 " ++ show attrInd ++ "\n")
+            addToCurrentBlock ins
+            return (llvmCode, returnReg)
+        _ -> error "Internal compiler error: trying to access attribute of non-class"

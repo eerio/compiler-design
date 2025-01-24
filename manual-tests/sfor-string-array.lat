@@ -1,0 +1,16 @@
+int main() {
+  string[] x = new string[4];
+
+  x[0] = "aaa";
+  x[1] = "bbb";
+
+  string res = "[";
+  string delim = "";
+  for (string c : x) {
+		res = res + delim + "\"" + c + "\"";
+    delim = ", ";
+  }
+  printString(res + "]");
+  return 0;
+}
+
