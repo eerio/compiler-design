@@ -15,6 +15,7 @@ lib/runtime.bc: lib/runtime.c
 
 latc: $(GRAMMAR_FILES_PATH) src/Main.hs Makefile src/TypeChecker.hs src/BackendLLVM.hs
 	cabal install --overwrite-policy=always --installdir=.
+	cp latc latc_llvm
 
 $(GRAMMAR_FILES_PATH): $(GRAMMAR_PATH)/Latte.cf
 	bnfc --haskell --functor Latte/Latte.cf -d
